@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+
+    <meta charset="UTF-8">
+
+    <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1.0"
+    >
+
+    <title>ModelForge 3D</title>
+
+    <link
+        rel="stylesheet"
+        href="style.css"
+    >
+
+    <script type="importmap">
+    {
+        "imports": {
+            "three": "https://unpkg.com/three@0.181.1/build/three.module.js",
+            "three/addons/": "https://unpkg.com/three@0.181.1/examples/jsm/"
+        }
+    }
+    </script>
+
+</head>
+
+<body>
+
+    <!-- ========================================= -->
+    <!-- Top Toolbar -->
+    <!-- ========================================= -->
+
+    <div id="toolbar">
+
+        <div class="logo">
+            🚀 ModelForge 3D
+        </div>
+
+        <div class="menu">
+
+            <button id="newBtn">
+                Load
+            </button>
+
+            <button id="saveBtn">
+                Save
+            </button>
+            <button id="exportBtn">
+              Export
+              </button>
+             <button id="uploadBtn">
+                Upload
+            </button>
+
+            <button id="cubeBtn">
+                Cube
+            </button>
+
+            <button id="sphereBtn">
+                Sphere
+            </button>
+
+            <button id="cylinderBtn">
+                Cylinder
+            </button>
+
+            <button id="coneBtn">
+                Cone
+            </button>
+
+            <button id="planeBtn">
+                Plane
+            </button>
+
+            <button id="snapBtn">
+                Snap Off
+            </button>
+
+            <!-- NEW: Group System -->
+            <button id="groupBtn">
+                Group
+            </button>
+
+            <button id="ungroupBtn">
+                Ungroup
+            </button>
+
+            <button id="importBtn">
+                Import
+            </button>
+
+            <input
+                id="fileInput"
+                type="file"
+                accept=".glb,.gltf"
+                hidden
+            >
+
+        </div>
+
+    </div>
+
+
+    <!-- ========================================= -->
+    <!-- Editor Layout -->
+    <!-- ========================================= -->
+
+    <div id="editor">
+
+        <!-- Left Panel : Hierarchy -->
+
+        <div id="leftPanel">
+
+            <h3>Scene</h3>
+
+            <ul id="sceneTree"></ul>
+
+        </div>
+
+
+        <!-- 3D Viewport -->
+
+        <div id="app"></div>
+
+
+        <!-- Right Panel : Inspector -->
+
+        <div id="rightPanel">
+
+            <h3>Inspector</h3>
+
+            <p>No object selected</p>
+
+        </div>
+
+    </div>
+
+
+    <!-- ========================================= -->
+    <!-- Bottom Toolbar -->
+    <!-- ========================================= -->
+
+    <div id="bottomToolbar">
+
+        <button id="moveBtn">
+            ✋ Move
+        </button>
+
+        <button id="rotateBtn">
+            🔄 Rotate
+        </button>
+
+        <button id="scaleBtn">
+            📏 Scale
+        </button>
+
+    </div>
+
+
+    <!-- ========================================= -->
+    <!-- Status Bar -->
+    <!-- ========================================= -->
+
+    <div id="statusBar">
+        Ready
+    </div>
+
+
+    <!-- ========================================= -->
+    <!-- Main Script -->
+    <!-- ========================================= -->
+
+    <script
+        type="module"
+        src="main.js"
+    ></script>
+
+</body>
+</html>
