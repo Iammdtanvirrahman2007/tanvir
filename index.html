@@ -34,11 +34,11 @@
     <footer id="statusBar"><div class="status-left"><span class="status-indicator"></span><span id="statusText">Ready</span></div><div class="status-center">ModelForge 3D · Created by Md. Tanvir Rahman</div><div class="status-right"><span>Objects <strong id="objectCount">0</strong></span><span>FPS <strong id="fpsCounter">--</strong></span></div></footer>
     <div id="creatorBadge" aria-label="ModelForge creator">Created by Md. Tanvir Rahman</div>
     <input id="fileInput" type="file" accept=".glb,.gltf,.json" hidden>
-    <script type="module" src="main.js"></script>
+    <script type="module" src="main.js?v=20260811-runtime-fix"></script>
     <script type="module">
-        import { initDeviceExperience } from "./core/deviceExperience.js";
-        import { initCommandCenter, openCommandCenter } from "./core/commandCenter.js";
-        import { initNumericTransform } from "./core/numericTransform.js";
+        import { initDeviceExperience } from "./core/deviceExperience.js?v=20260811-runtime-fix";
+        import { initCommandCenter, openCommandCenter } from "./core/commandCenter.js?v=20260811-runtime-fix";
+        import { initNumericTransform } from "./core/numericTransform.js?v=20260811-runtime-fix";
         const start = () => { initDeviceExperience(); initCommandCenter(); initNumericTransform(); const bindings = [["fileMenuBtn","file"],["editMenuBtn","edit"],["viewMenuBtn","view"],["addMenuBtn","add"],["mobileMoreBtn","more"],["inspectorOptionsBtn","more"]]; bindings.forEach(([id,section]) => document.getElementById(id)?.addEventListener("click", event => { event.stopPropagation(); openCommandCenter(section, event.currentTarget); })); };
         if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", start, { once: true }); else start();
     </script>
