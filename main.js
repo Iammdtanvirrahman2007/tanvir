@@ -1,3 +1,4 @@
+import "./pwa-register.js";
 import * as THREE from "three";
 import { setupUpload } from "./core/upload.js";
 import { chooseSaveFormat, saveScene } from "./core/save.js?v=20260811-save-singleton-1";
