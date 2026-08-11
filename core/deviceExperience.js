@@ -1,4 +1,4 @@
-import { renderer, controls, camera } from "./scene.js";
+import { renderer, controls, camera } from "./scene.js?v=20260811-runtime-fix";
 
 const STORAGE_KEY = "modelforge:workspace:v2";
 const root = document.documentElement;
@@ -28,14 +28,7 @@ export function getProfile() {
     const mobile = width <= 760;
     const tablet = width > 760 && width <= 1100;
     const performance = choosePerformance(width, height, touch);
-    return {
-        width,
-        height,
-        touch,
-        input: touch ? "touch" : "mouse",
-        device: mobile ? "mobile" : tablet ? "tablet" : "desktop",
-        performance
-    };
+    return { width, height, touch, input: touch ? "touch" : "mouse", device: mobile ? "mobile" : tablet ? "tablet" : "desktop", performance };
 }
 
 function choosePerformance(width, height, touch) {
@@ -60,52 +53,27 @@ function installMobileDock() {
         <button data-action="inspector"><b>◇</b><span>Inspect</span></button>
         <button data-action="more"><b>⋯</b><span>More</span></button>`;
     document.body.appendChild(dock);
-
     dock.addEventListener("click", event => {
         const action = event.target.closest("[data-action]")?.dataset.action;
         if (!action) return;
         const click = id => document.getElementById(id)?.click();
-        const actions = {
-            scene: () => click("mobileSceneBtn"),
-            add: () => click("addMenuBtn"),
-            select: () => click("selectBtn"),
-            move: () => click("moveBtn"),
-            rotate: () => click("rotateBtn"),
-            scale: () => click("scaleBtn"),
-            inspector: () => click("mobileInspectorBtn"),
-            more: () => openMobileMore()
-        };
+        const actions = { scene: () => click("mobileSceneBtn"), add: () => click("addMenuBtn"), select: () => click("selectBtn"), move: () => click("moveBtn"), rotate: () => click("rotateBtn"), scale: () => click("scaleBtn"), inspector: () => click("mobileInspectorBtn"), more: () => openMobileMore() };
         actions[action]?.();
     });
 }
 
 function openMobileMore() {
     let sheet = document.getElementById("mobileMoreSheet");
-    if (sheet) {
-        sheet.toggleAttribute("hidden");
-        return;
-    }
+    if (sheet) { sheet.toggleAttribute("hidden"); return; }
     sheet = document.createElement("div");
     sheet.id = "mobileMoreSheet";
     sheet.className = "mobile-more-sheet";
-    sheet.innerHTML = `
-        <div class="mobile-more-head"><strong>Editor</strong><button data-close>×</button></div>
-        <div class="mobile-more-grid">
-            <button data-click="undoBtn">Undo</button><button data-click="redoBtn">Redo</button>
-            <button data-click="gridBtn">Grid</button><button data-click="frameBtn">Frame</button>
-            <button data-click="cameraResetBtn">Reset View</button><button data-click="snapBtn">Snap</button>
-            <button data-click="groupBtn">Group</button><button data-click="ungroupBtn">Ungroup</button>
-            <button data-click="saveBtn">Save</button><button data-click="loadBtn">Open</button>
-            <button data-click="exportBtn">Export</button><button data-click="uploadBtn">Part</button>
-        </div>`;
+    sheet.innerHTML = `<div class="mobile-more-head"><strong>Editor</strong><button data-close>×</button></div><div class="mobile-more-grid"><button data-click="undoBtn">Undo</button><button data-click="redoBtn">Redo</button><button data-click="gridBtn">Grid</button><button data-click="frameBtn">Frame</button><button data-click="cameraResetBtn">Reset View</button><button data-click="snapBtn">Snap</button><button data-click="groupBtn">Group</button><button data-click="ungroupBtn">Ungroup</button><button data-click="saveBtn">Save</button><button data-click="loadBtn">Open</button><button data-click="exportBtn">Export</button><button data-click="uploadBtn">Part</button></div>`;
     document.body.appendChild(sheet);
     sheet.addEventListener("click", event => {
         if (event.target.closest("[data-close]")) return sheet.remove();
         const id = event.target.closest("[data-click]")?.dataset.click;
-        if (id) {
-            document.getElementById(id)?.click();
-            sheet.remove();
-        }
+        if (id) { document.getElementById(id)?.click(); sheet.remove(); }
     });
 }
 
@@ -113,45 +81,24 @@ function installTouchSafety() {
     const viewport = document.getElementById("viewport");
     if (!viewport) return;
     viewport.style.touchAction = "none";
-
     let lastTap = 0;
     viewport.addEventListener("pointerup", event => {
         if (event.pointerType !== "touch") return;
         const now = performance.now();
-        if (now - lastTap < 280) {
-            window.dispatchEvent(new CustomEvent("editor:double-tap", { detail: { x: event.clientX, y: event.clientY } }));
-        }
+        if (now - lastTap < 280) window.dispatchEvent(new CustomEvent("editor:double-tap", { detail: { x: event.clientX, y: event.clientY } }));
         lastTap = now;
     }, { passive: true });
-
-    window.addEventListener("editor:double-tap", () => {
-        const frame = document.getElementById("frameBtn");
-        if (frame) frame.click();
-    });
+    window.addEventListener("editor:double-tap", () => document.getElementById("frameBtn")?.click());
 }
 
 function installQuality(profile) {
-    // initDeviceExperience normally runs after initScene. Keep this guard so
-    // quality detection cannot crash the editor if startup order changes.
     if (!renderer) return;
-
-    const ratios = {
-        performance: 1,
-        balanced: Math.min(window.devicePixelRatio || 1, 1.25),
-        high: Math.min(window.devicePixelRatio || 1, 2)
-    };
+    const ratios = { performance: 1, balanced: Math.min(window.devicePixelRatio || 1, 1.25), high: Math.min(window.devicePixelRatio || 1, 2) };
     const ratio = ratios[profile.performance] ?? 1;
     renderer.targetPixelRatio = ratio;
     renderer.setPixelRatio(ratio);
     renderer.domElement.style.imageRendering = "auto";
-
-    if (profile.performance === "performance") {
-        renderer.shadowMap.enabled = false;
-    } else if (profile.performance === "balanced") {
-        renderer.shadowMap.enabled = true;
-    } else {
-        renderer.shadowMap.enabled = true;
-    }
+    renderer.shadowMap.enabled = profile.performance !== "performance";
 }
 
 function handleResize() {
@@ -164,35 +111,23 @@ function handleResize() {
 }
 
 function bindOrientation() {
-    if (screen.orientation?.addEventListener) {
-        screen.orientation.addEventListener("change", handleResize);
-    }
+    if (screen.orientation?.addEventListener) screen.orientation.addEventListener("change", handleResize);
 }
 
 function saveWorkspace() {
     try {
-        const data = {
-            device: root.dataset.device,
-            input: root.dataset.input,
-            performance: root.dataset.performance,
-            tool: document.querySelector("#bottomToolbar .tool-btn.active")?.id || "selectBtn",
-            grid: document.getElementById("gridBtn")?.textContent || "Grid"
-        };
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+        localStorage.setItem(STORAGE_KEY, JSON.stringify({ device: root.dataset.device, input: root.dataset.input, performance: root.dataset.performance, tool: document.querySelector("#bottomToolbar .tool-btn.active")?.id || "selectBtn", grid: document.getElementById("gridBtn")?.textContent || "Grid" }));
     } catch {}
 }
 
 function restoreWorkspace() {
     try {
         const data = JSON.parse(localStorage.getItem(STORAGE_KEY) || "null");
-        if (!data) return;
-        if (data.tool) setTimeout(() => document.getElementById(data.tool)?.click(), 0);
+        if (data?.tool) setTimeout(() => document.getElementById(data.tool)?.click(), 0);
     } catch {}
 }
 
 function bindWorkspacePersistence() {
-    document.addEventListener("visibilitychange", () => {
-        if (document.visibilityState === "hidden") saveWorkspace();
-    });
+    document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") saveWorkspace(); });
     window.addEventListener("beforeunload", saveWorkspace);
 }
