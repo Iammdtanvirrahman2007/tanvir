@@ -50,9 +50,12 @@ function restoreObject(scene, parent, data) {
 
     object.name = data.name || "Object";
     object.visible = data.visible ?? true;
-    object.position.fromArray(normalizeVector(data.position, [0, 0, 0]));
-    object.rotation.set(...normalizeVector(data.rotation, [0, 0, 0]));
-    object.scale.fromArray(normalizeVector(data.scale, [1, 1, 1]));
+    const position = normalizeVector(data.position, [0, 0, 0]);
+    const rotation = normalizeVector(data.rotation, [0, 0, 0]);
+    const scale = normalizeVector(data.scale, [1, 1, 1]);
+    object.position.fromArray(position);
+    object.rotation.set(...rotation);
+    object.scale.fromArray(scale);
     object.userData.editorObject = true;
     Object.assign(object.userData, data.userData || {});
 
@@ -82,6 +85,7 @@ function createGeometry(type) {
 }
 
 function normalizeVector(value, fallback) {
-    if (!Array.isArray(value) || value.length < 3) return fallback;
-    return [Number(value[0]) || 0, Number(value[1]) || 0, Number(value[2]) || 0];
+    if (Array.isArray(value) && value.length >= 3) return [Number(value[0]) || 0, Number(value[1]) || 0, Number(value[2]) || 0];
+    if (value && typeof value === "object") return [Number(value.x) || 0, Number(value.y) || 0, Number(value.z) || 0];
+    return fallback;
 }
