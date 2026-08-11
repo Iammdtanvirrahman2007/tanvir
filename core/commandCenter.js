@@ -6,35 +6,27 @@ import { duplicateObject } from "./duplicate.js";
 import { getSelected, clearSelection } from "./selection.js";
 import { groupSelected, ungroupSelected } from "./grouping.js";
 import { createObject } from "../objects/factory.js";
-import { addObject } from "./objectManager.js";
-import { addToHierarchy, rebuildHierarchy } from "../ui/hierarchy.js";
+import { addObject, removeObject } from "./objectManager.js";
+import { addToHierarchy, rebuildHierarchy, removeFromHierarchy } from "../ui/hierarchy.js";
 import { updateInspector } from "../ui/inspector.js";
 import * as THREE from "three";
 
 let host = null;
 let panel = null;
-let currentSection = "add";
 
 export function initCommandCenter() {
     if (host) return;
     host = document.createElement("div");
     host.id = "commandCenterHost";
-    host.innerHTML = `
-        <div id="commandCenterBackdrop" hidden></div>
-        <section id="commandCenter" hidden role="menu" aria-label="ModelForge commands">
-            <div class="command-head"><div><span class="command-kicker">ModelForge</span><strong id="commandTitle">Add Object</strong></div><button id="commandClose" aria-label="Close">×</button></div>
-            <div id="commandList"></div>
-        </section>`;
+    host.innerHTML = `<div id="commandCenterBackdrop" hidden></div><section id="commandCenter" hidden role="menu" aria-label="ModelForge commands"><div class="command-head"><div><span class="command-kicker">ModelForge</span><strong id="commandTitle">Add Object</strong></div><button id="commandClose" aria-label="Close">×</button></div><div id="commandList"></div></section>`;
     document.body.appendChild(host);
     panel = host.querySelector("#commandCenter");
     host.querySelector("#commandClose")?.addEventListener("click", closeCommandCenter);
     host.querySelector("#commandCenterBackdrop")?.addEventListener("click", closeCommandCenter);
-    renderSection("add");
 }
 
 export function openCommandCenter(section = "add", anchor = null) {
     if (!host) initCommandCenter();
-    currentSection = section;
     renderSection(section);
     const rect = anchor?.getBoundingClientRect?.();
     if (window.innerWidth <= 760 || !rect) {
@@ -43,7 +35,7 @@ export function openCommandCenter(section = "add", anchor = null) {
         panel.style.transform = "translate(-50%, -50%)";
     } else {
         panel.style.left = `${Math.min(rect.left, window.innerWidth - 310)}px`;
-        panel.style.top = `${Math.min(rect.bottom + 6, window.innerHeight - 380)}px`;
+        panel.style.top = `${Math.min(rect.bottom + 6, window.innerHeight - 390)}px`;
         panel.style.transform = "none";
     }
     panel.hidden = false;
@@ -62,7 +54,7 @@ function renderSection(section) {
     const commands = section === "add" ? addCommands() : section === "file" ? fileCommands() : section === "edit" ? editCommands() : section === "view" ? viewCommands() : moreCommands();
     const list = panel.querySelector("#commandList");
     list.innerHTML = commands.map((command, index) => `<button class="command-item" data-command-index="${index}" role="menuitem"><span class="command-icon">${command.icon || "•"}</span><span class="command-copy"><strong>${command.label}</strong><small>${command.detail || ""}</small></span><kbd>${command.shortcut || ""}</kbd></button>`).join("");
-    list.querySelectorAll("[data-command-index]").forEach(button => button.addEventListener("click", () => { commands[Number(button.dataset.commandIndex)].run(); }));
+    list.querySelectorAll("[data-command-index]").forEach(button => button.addEventListener("click", () => commands[Number(button.dataset.commandIndex)].run()));
 }
 
 function addCommands() {
@@ -75,7 +67,8 @@ function fileCommands() {
         { icon: "↥", label: "Open Scene", detail: "Load a ModelForge JSON scene", run: () => click("loadBtn") },
         { icon: "↓", label: "Save Scene", detail: "Save the current editor scene", run: () => { saveScene(scene); status("Scene saved"); } },
         { icon: "⇩", label: "Import GLTF / GLB", detail: "Bring a model into the scene", run: () => click("importBtn") },
-        { icon: "⇧", label: "Export GLTF", detail: "Export editable scene objects", run: () => downloadGLTF(scene) }
+        { icon: "⇧", label: "Export GLTF", detail: "Export editable scene objects", run: () => downloadGLTF(scene) },
+        { icon: "🚀", label: "Export Rocket Part", detail: "Export the current part as .rkp", run: () => click("uploadBtn") }
     ];
 }
 
@@ -97,7 +90,7 @@ function viewCommands() {
     return [
         { icon: "▦", label: grid.visible ? "Hide Grid" : "Show Grid", detail: "Toggle the viewport grid", run: () => { grid.visible = !grid.visible; status(grid.visible ? "Grid enabled" : "Grid hidden"); closeCommandCenter(); } },
         { icon: "⌖", label: "Frame Selected", detail: "Center the selected object", shortcut: "F", run: frameSelected },
-        { icon: "⟳", label: "Reset View", detail: "Restore the default camera", run: () => { resetCamera(); status("View reset"); } },
+        { icon: "⟳", label: "Reset View", detail: "Restore the default camera", run: () => { resetCamera(); status("View reset"); closeCommandCenter(); } },
         { icon: "X", label: "Right View", detail: "Look along the X axis", run: () => align("x") },
         { icon: "Y", label: "Top View", detail: "Look along the Y axis", run: () => align("y") },
         { icon: "Z", label: "Front View", detail: "Look along the Z axis", run: () => align("z") }
@@ -107,12 +100,14 @@ function viewCommands() {
 function moreCommands() {
     return [
         ...addCommands(),
-        { icon: "↶", label: "Undo", detail: "Undo", run: () => undo() },
-        { icon: "↷", label: "Redo", detail: "Redo", run: () => redo() },
+        { icon: "↶", label: "Undo", detail: "Undo", run: () => { undo(); closeCommandCenter(); } },
+        { icon: "↷", label: "Redo", detail: "Redo", run: () => { redo(); closeCommandCenter(); } },
         { icon: "◇", label: "Scene", detail: "Open scene hierarchy", run: () => click("mobileSceneBtn") },
         { icon: "◈", label: "Inspector", detail: "Open object properties", run: () => click("mobileInspectorBtn") },
+        { icon: "🚀", label: "Rocket Part", detail: "Export .rkp", run: () => click("uploadBtn") },
         { icon: "⌖", label: "Frame Selected", detail: "Focus the selected object", run: frameSelected },
-        { icon: "▦", label: grid.visible ? "Hide Grid" : "Show Grid", detail: "Toggle grid", run: () => { grid.visible = !grid.visible; status(grid.visible ? "Grid enabled" : "Grid hidden"); } }
+        { icon: "▦", label: grid.visible ? "Hide Grid" : "Show Grid", detail: "Toggle grid", run: () => { grid.visible = !grid.visible; status(grid.visible ? "Grid enabled" : "Grid hidden"); closeCommandCenter(); } },
+        { icon: "⟳", label: "Reset View", detail: "Restore camera", run: () => { resetCamera(); status("View reset"); closeCommandCenter(); } }
     ];
 }
 
@@ -127,8 +122,10 @@ function add(type) {
 
 function newScene() {
     if (!confirm("Clear all editable objects from this scene?")) return;
-    const objects = scene.children.filter(object => object.userData?.editorObject && !object.userData?.editorOnly);
-    objects.forEach(object => scene.remove(object));
+    scene.children.filter(object => object.userData?.editorObject && !object.userData?.editorOnly).slice().forEach(object => {
+        removeObject(scene, object);
+        removeFromHierarchy(object);
+    });
     clearSelection();
     rebuildHierarchy();
     updateInspector(null);
