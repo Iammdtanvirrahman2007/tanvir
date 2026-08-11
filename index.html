@@ -9,6 +9,15 @@
     <link rel="icon" href="favicon.svg" type="image/svg+xml">
     <link rel="stylesheet" href="style.css">
     <link rel="stylesheet" href="device.css">
+    <style>
+        #commandCenterHost{position:relative;z-index:200}.command-center-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.45);backdrop-filter:blur(2px)}
+        #commandCenterBackdrop{position:fixed;inset:0;background:rgba(0,0,0,.45);backdrop-filter:blur(2px);z-index:199}
+        #commandCenter{position:fixed;width:292px;max-height:min(72vh,560px);overflow:auto;border:1px solid #3a3d45;border-radius:8px;background:#1a1b20;box-shadow:0 18px 50px rgba(0,0,0,.65);z-index:200;color:#e6e7eb}
+        #commandCenter[hidden],#commandCenterBackdrop[hidden]{display:none}
+        .command-head{position:sticky;top:0;display:flex;align-items:center;justify-content:space-between;padding:11px 12px;border-bottom:1px solid #2c2f36;background:#1a1b20;z-index:1}.command-kicker{display:block;color:#70747e;font-size:8px;letter-spacing:1.1px;text-transform:uppercase;margin-bottom:3px}.command-head strong{font-size:12px;font-weight:650}.command-head button{width:28px;height:28px;border:0;border-radius:4px;background:transparent;color:#898d97;font-size:18px;cursor:pointer}.command-head button:hover{background:#292b32;color:#fff}
+        #commandList{padding:5px}.command-item{width:100%;display:flex;align-items:center;gap:9px;padding:8px;border:0;border-radius:5px;background:transparent;color:#c4c7ce;text-align:left;cursor:pointer}.command-item:hover{background:#292b32;color:#fff}.command-icon{width:22px;text-align:center;color:#9296a1;font-size:13px}.command-copy{min-width:0;flex:1}.command-copy strong{display:block;font-size:11px;font-weight:550}.command-copy small{display:block;margin-top:2px;color:#6e727d;font-size:9px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.command-item kbd{min-width:28px;color:#626671;font:9px ui-monospace,SFMono-Regular,monospace;text-align:right}
+        @media(max-width:760px){#commandCenter{width:min(calc(100vw - 20px),390px);max-height:78vh;border-radius:12px}.command-item{min-height:46px;padding:9px 10px}.command-icon{width:26px}.command-copy strong{font-size:12px}.command-copy small{font-size:9px}.command-item kbd{font-size:9px}}
+    </style>
     <script type="importmap">
     {"imports":{"three":"https://unpkg.com/three@0.181.1/build/three.module.js","three/addons/":"https://unpkg.com/three@0.181.1/examples/jsm/"}}
     </script>
@@ -19,11 +28,10 @@
         <nav class="app-menu" aria-label="Application menu">
             <button class="menu-item" id="fileMenuBtn">File</button><button class="menu-item" id="editMenuBtn">Edit</button><button class="menu-item" id="viewMenuBtn">View</button><button class="menu-item" id="addMenuBtn">Add</button>
         </nav>
-        <div class="top-actions"><button class="icon-btn mobile-panel-btn" id="mobileSceneBtn" title="Scene">☷</button><button class="icon-btn mobile-panel-btn" id="mobileInspectorBtn" title="Inspector">◇</button><button class="icon-btn" id="undoBtn" title="Undo (Ctrl+Z)">↶</button><button class="icon-btn" id="redoBtn" title="Redo (Ctrl+Y)">↷</button><span class="toolbar-divider"></span><button class="action-btn" id="loadBtn">Open</button><button class="action-btn primary" id="saveBtn">Save</button><button class="action-btn" id="exportBtn">Export</button><button class="action-btn" id="uploadBtn">Part</button></div>
+        <div class="top-actions"><button class="icon-btn mobile-panel-btn" id="mobileSceneBtn" title="Scene">☷</button><button class="icon-btn mobile-panel-btn" id="mobileInspectorBtn" title="Inspector">◇</button><button class="icon-btn mobile-panel-btn" id="mobileMoreBtn" title="All features">⋮</button><button class="icon-btn" id="undoBtn" title="Undo (Ctrl+Z)">↶</button><button class="icon-btn" id="redoBtn" title="Redo (Ctrl+Y)">↷</button><span class="toolbar-divider"></span><button class="action-btn" id="loadBtn">Open</button><button class="action-btn primary" id="saveBtn">Save</button><button class="action-btn" id="exportBtn">Export</button><button class="action-btn" id="uploadBtn">Part</button></div>
     </header>
     <div id="menuPopover" class="menu-popover" hidden></div>
     <div id="mobileBackdrop" hidden></div>
-
     <main id="editor">
         <aside id="leftPanel" class="panel">
             <div class="panel-header"><div><span class="eyebrow">Workspace</span><h2>Scene</h2></div><button class="panel-icon" id="sceneAddBtn" title="Add object">+</button></div>
@@ -31,7 +39,6 @@
             <div class="scene-tree-wrap"><div class="tree-label">SCENE COLLECTION</div><ul id="sceneTree" aria-label="Scene hierarchy"></ul></div>
             <div class="left-footer"><button class="footer-tool" id="addCollectionBtn">+ Collection</button><button class="footer-tool" id="importBtn">Import</button></div>
         </aside>
-
         <section id="viewport" aria-label="3D viewport">
             <div id="app"></div>
             <div class="viewport-overlay viewport-top-left"><div class="viewport-chip"><span class="live-dot"></span><span id="viewModeLabel">Perspective</span></div><div class="viewport-chip muted">User Perspective</div></div>
@@ -40,23 +47,24 @@
             <div class="viewport-axis" aria-hidden="true"><span class="axis-x">X</span><span class="axis-y">Y</span><span class="axis-z">Z</span></div>
             <div class="viewport-overlay viewport-bottom-left"><span>LMB Select</span><span>MMB Orbit</span><span>Shift+MMB Pan</span></div>
         </section>
-
         <aside id="rightPanel" class="panel">
             <div class="panel-header inspector-header"><div><span class="eyebrow">Properties</span><h2>Inspector</h2></div><button class="panel-icon" id="inspectorOptionsBtn">⋮</button></div>
             <div class="inspector-tabs"><button class="inspector-tab active" data-tab="object">Object</button><button class="inspector-tab" data-tab="material">Material</button></div>
             <div id="inspectorContent"></div>
         </aside>
     </main>
-
     <div id="bottomToolbar"><div class="tool-group"><button id="selectBtn" class="tool-btn active" title="Select (W)">↖ <span>Select</span></button><button id="moveBtn" class="tool-btn" title="Move (G)">✥ <span>Move</span></button><button id="rotateBtn" class="tool-btn" title="Rotate (R)">⟳ <span>Rotate</span></button><button id="scaleBtn" class="tool-btn" title="Scale (S)">⌗ <span>Scale</span></button></div><span class="toolbar-divider"></span><div class="tool-group"><button id="snapBtn" class="tool-btn">Snap Off</button><button id="groupBtn" class="tool-btn">Group</button><button id="ungroupBtn" class="tool-btn">Ungroup</button></div></div>
     <footer id="statusBar"><div class="status-left"><span class="status-indicator"></span><span id="statusText">Ready</span></div><div class="status-center">ModelForge 3D · Created by Md. Tanvir Rahman</div><div class="status-right"><span>Objects <strong id="objectCount">0</strong></span><span>FPS <strong id="fpsCounter">--</strong></span></div></footer>
-    <input id="fileInput" type="file" accept=".glb,.gltf" hidden>
+    <input id="fileInput" type="file" accept=".glb,.gltf,.json" hidden>
     <script type="module" src="main.js"></script>
     <script type="module">
         import { initDeviceExperience } from "./core/deviceExperience.js";
-        const start = () => initDeviceExperience();
-        if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", start, { once: true });
-        else start();
+        import { initCommandCenter, openCommandCenter } from "./core/commandCenter.js";
+        const start = () => { initDeviceExperience(); initCommandCenter();
+            const bindings = [["fileMenuBtn","file"],["editMenuBtn","edit"],["viewMenuBtn","view"],["addMenuBtn","add"],["mobileMoreBtn","more"],["inspectorOptionsBtn","more"]];
+            bindings.forEach(([id,section]) => document.getElementById(id)?.addEventListener("click", event => { event.stopPropagation(); openCommandCenter(section, event.currentTarget); }));
+        };
+        if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", start, { once: true }); else start();
     </script>
 </body>
 </html>
