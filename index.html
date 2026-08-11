@@ -1,22 +1,11 @@
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
-
     <meta charset="UTF-8">
-
-    <meta
-        name="viewport"
-        content="width=device-width, initial-scale=1.0"
-    >
-
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#17181c">
     <title>ModelForge 3D</title>
-
-    <link
-        rel="stylesheet"
-        href="style.css"
-    >
-
+    <link rel="stylesheet" href="style.css">
     <script type="importmap">
     {
         "imports": {
@@ -25,159 +14,102 @@
         }
     }
     </script>
-
 </head>
-
 <body>
-
-    <!-- ========================================= -->
-    <!-- Top Toolbar -->
-    <!-- ========================================= -->
-
-    <div id="toolbar">
-
-        <div class="logo">
-            🚀 ModelForge 3D
+    <header id="topbar">
+        <div class="brand">
+            <div class="brand-mark">MF</div>
+            <div class="brand-copy"><strong>ModelForge</strong><span>3D Editor</span></div>
         </div>
-
-        <div class="menu">
-
-            <button id="newBtn">
-                Load
-            </button>
-
-            <button id="saveBtn">
-                Save
-            </button>
-            <button id="exportBtn">
-              Export
-              </button>
-             <button id="uploadBtn">
-                Upload
-            </button>
-
-            <button id="cubeBtn">
-                Cube
-            </button>
-
-            <button id="sphereBtn">
-                Sphere
-            </button>
-
-            <button id="cylinderBtn">
-                Cylinder
-            </button>
-
-            <button id="coneBtn">
-                Cone
-            </button>
-
-            <button id="planeBtn">
-                Plane
-            </button>
-
-            <button id="snapBtn">
-                Snap Off
-            </button>
-
-            <!-- NEW: Group System -->
-            <button id="groupBtn">
-                Group
-            </button>
-
-            <button id="ungroupBtn">
-                Ungroup
-            </button>
-
-            <button id="importBtn">
-                Import
-            </button>
-
-            <input
-                id="fileInput"
-                type="file"
-                accept=".glb,.gltf"
-                hidden
-            >
-
+        <nav class="app-menu" aria-label="Application menu">
+            <button class="menu-item" id="fileMenuBtn">File</button>
+            <button class="menu-item" id="editMenuBtn">Edit</button>
+            <button class="menu-item" id="viewMenuBtn">View</button>
+            <button class="menu-item" id="addMenuBtn">Add</button>
+        </nav>
+        <div class="top-actions">
+            <button class="icon-btn" id="undoBtn" title="Undo (Ctrl+Z)">↶</button>
+            <button class="icon-btn" id="redoBtn" title="Redo (Ctrl+Y)">↷</button>
+            <span class="toolbar-divider"></span>
+            <button class="action-btn" id="loadBtn">Open</button>
+            <button class="action-btn primary" id="saveBtn">Save</button>
+            <button class="action-btn" id="exportBtn">Export</button>
+            <button class="action-btn" id="uploadBtn">Part</button>
         </div>
+    </header>
 
-    </div>
+    <div id="menuPopover" class="menu-popover" hidden></div>
 
+    <main id="editor">
+        <aside id="leftPanel" class="panel">
+            <div class="panel-header">
+                <div><span class="eyebrow">Workspace</span><h2>Scene</h2></div>
+                <button class="panel-icon" id="sceneAddBtn" title="Add object">+</button>
+            </div>
+            <div class="scene-tools">
+                <div class="search-box"><span>⌕</span><input id="sceneSearch" type="search" placeholder="Search scene..." autocomplete="off"></div>
+                <button class="panel-icon" id="sceneOptionsBtn" title="Scene options">⋮</button>
+            </div>
+            <div class="scene-tree-wrap">
+                <div class="tree-label">SCENE COLLECTION</div>
+                <ul id="sceneTree" aria-label="Scene hierarchy"></ul>
+            </div>
+            <div class="left-footer">
+                <button class="footer-tool" id="addCollectionBtn">+ Collection</button>
+                <button class="footer-tool" id="importBtn">Import</button>
+            </div>
+        </aside>
 
-    <!-- ========================================= -->
-    <!-- Editor Layout -->
-    <!-- ========================================= -->
+        <section id="viewport" aria-label="3D viewport">
+            <div id="app"></div>
+            <div class="viewport-overlay viewport-top-left">
+                <div class="viewport-chip"><span class="live-dot"></span><span id="viewModeLabel">Perspective</span></div>
+                <div class="viewport-chip muted">User Perspective</div>
+            </div>
+            <div class="viewport-overlay viewport-top-right">
+                <button class="viewport-btn" id="gridBtn">Grid</button>
+                <button class="viewport-btn" id="frameBtn">Frame</button>
+                <button class="viewport-btn" id="cameraResetBtn">Reset View</button>
+            </div>
+            <div class="viewport-axis" aria-hidden="true"><span class="axis-x">X</span><span class="axis-y">Y</span><span class="axis-z">Z</span></div>
+            <div class="viewport-overlay viewport-bottom-left"><span>LMB Select</span><span>MMB Orbit</span><span>Shift+MMB Pan</span></div>
+        </section>
 
-    <div id="editor">
-
-        <!-- Left Panel : Hierarchy -->
-
-        <div id="leftPanel">
-
-            <h3>Scene</h3>
-
-            <ul id="sceneTree"></ul>
-
-        </div>
-
-
-        <!-- 3D Viewport -->
-
-        <div id="app"></div>
-
-
-        <!-- Right Panel : Inspector -->
-
-        <div id="rightPanel">
-
-            <h3>Inspector</h3>
-
-            <p>No object selected</p>
-
-        </div>
-
-    </div>
-
-
-    <!-- ========================================= -->
-    <!-- Bottom Toolbar -->
-    <!-- ========================================= -->
+        <aside id="rightPanel" class="panel">
+            <div class="panel-header inspector-header">
+                <div><span class="eyebrow">Properties</span><h2>Inspector</h2></div>
+                <button class="panel-icon" id="inspectorOptionsBtn">⋮</button>
+            </div>
+            <div class="inspector-tabs">
+                <button class="inspector-tab active" data-tab="object">Object</button>
+                <button class="inspector-tab" data-tab="material">Material</button>
+            </div>
+            <div id="inspectorContent"></div>
+        </aside>
+    </main>
 
     <div id="bottomToolbar">
-
-        <button id="moveBtn">
-            ✋ Move
-        </button>
-
-        <button id="rotateBtn">
-            🔄 Rotate
-        </button>
-
-        <button id="scaleBtn">
-            📏 Scale
-        </button>
-
+        <div class="tool-group">
+            <button id="selectBtn" class="tool-btn active" title="Select (W)">↖ <span>Select</span></button>
+            <button id="moveBtn" class="tool-btn" title="Move (G)">✥ <span>Move</span></button>
+            <button id="rotateBtn" class="tool-btn" title="Rotate (R)">⟳ <span>Rotate</span></button>
+            <button id="scaleBtn" class="tool-btn" title="Scale (S)">⌗ <span>Scale</span></button>
+        </div>
+        <span class="toolbar-divider"></span>
+        <div class="tool-group">
+            <button id="snapBtn" class="tool-btn">Snap Off</button>
+            <button id="groupBtn" class="tool-btn">Group</button>
+            <button id="ungroupBtn" class="tool-btn">Ungroup</button>
+        </div>
     </div>
 
+    <footer id="statusBar">
+        <div class="status-left"><span class="status-indicator"></span><span id="statusText">Ready</span></div>
+        <div class="status-center">ModelForge 3D</div>
+        <div class="status-right"><span>Objects <strong id="objectCount">0</strong></span><span>FPS <strong id="fpsCounter">--</strong></span></div>
+    </footer>
 
-    <!-- ========================================= -->
-    <!-- Status Bar -->
-    <!-- ========================================= -->
-
-    <div id="statusBar">
-        Ready
-    </div>
-
-
-    <!-- ========================================= -->
-    <!-- Main Script -->
-    <!-- ========================================= -->
-
-    <script
-        type="module"
-        src="main.js"
-    ></script>
-
+    <input id="fileInput" type="file" accept=".glb,.gltf" hidden>
+    <script type="module" src="main.js"></script>
 </body>
 </html>
