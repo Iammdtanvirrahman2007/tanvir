@@ -4,15 +4,10 @@ import { updateInspector } from "../ui/inspector.js";
 import { highlight, highlightMultiple, clearHighlight } from "./highlight.js";
 import { toggleMultiSelect, clearMultiSelection, getMultiSelection, setMultiSelection } from "./grouping.js";
 import { setActiveHierarchy, clearHierarchySelection } from "../ui/hierarchy.js";
-import { focusObject, consumeFocusTarget, getFocusMode } from "./focus.js";
 
 const raycaster = new THREE.Raycaster();
 const mouse = new THREE.Vector2();
 const CLICK_DRAG_THRESHOLD = 5;
-const TOUCH_DOUBLE_TAP_MS = 330;
-const TOUCH_DOUBLE_TAP_DISTANCE = 28;
-const DESKTOP_DOUBLE_CLICK_MS = 450;
-const DESKTOP_DOUBLE_CLICK_DISTANCE = 12;
 
 let selected = null;
 let selectionScene = null;
@@ -23,13 +18,6 @@ let boxDragging = false;
 let groupSyncInstalled = false;
 let pointerStart = null;
 let pointerMoved = false;
-let lastTouchTap = 0;
-let lastTouchPoint = null;
-let lastDesktopTap = 0;
-let lastDesktopPoint = null;
-let suppressNextClick = false;
-let suppressNextDblClick = false;
-const activeTouchPointers = new Set();
 
 export function getSelected() { return selected; }
 export function getSelection() { return getMultiSelection(); }
@@ -70,7 +58,7 @@ export function selectMultiple(objects, options = {}) {
 }
 
 function applySelectionVisuals(selection, options = {}) {
-    if (selection.length === 0) {
+    if (!selection.length) {
         detachTransform();
         clearHighlight();
         updateInspector(null);
@@ -98,18 +86,10 @@ export function setupSelection(renderer, camera, scene) {
     installGroupSelectionSync();
 
     canvas.addEventListener("pointerdown", event => {
-        if (event.pointerType === "touch") {
-            activeTouchPointers.add(event.pointerId);
-            if (activeTouchPointers.size > 1) {
-                lastTouchTap = 0;
-                lastTouchPoint = null;
-            }
-        }
         const tc = getTransform();
         if (event.button !== 0 || isDraggingTransform() || tc?.axis) return;
         pointerStart = { x: event.clientX, y: event.clientY, pointerId: event.pointerId, shift: event.shiftKey };
         pointerMoved = false;
-        suppressNextClick = false;
     }, { passive: true });
 
     canvas.addEventListener("pointermove", event => {
@@ -117,106 +97,36 @@ export function setupSelection(renderer, camera, scene) {
         const distance = Math.hypot(event.clientX - pointerStart.x, event.clientY - pointerStart.y);
         if (distance > CLICK_DRAG_THRESHOLD) pointerMoved = true;
         if (pointerStart.shift && event.pointerType !== "touch" && !boxDragging && distance > CLICK_DRAG_THRESHOLD) {
-            startBoxSelection({ ...event, pointerId: pointerStart.pointerId }, pointerStart);
-            suppressNextClick = true;
+            startBoxSelection(event, pointerStart);
         }
         if (boxDragging) updateBox(event);
     }, { passive: true });
 
     canvas.addEventListener("pointerup", event => {
-        const touchPointer = event.pointerType === "touch";
-        const touchCountBeforeRelease = activeTouchPointers.size;
-        if (touchPointer) activeTouchPointers.delete(event.pointerId);
-
         if (event.pointerId !== pointerStart?.pointerId) return;
         if (boxDragging) {
             finishBoxSelection(event, camera, scene);
-            suppressNextClick = true;
-        }
-
-        const wasMultiTouch = touchPointer && touchCountBeforeRelease > 1;
-        if (touchPointer && !wasMultiTouch && !pointerMoved && !boxDragging) {
-            const now = performance.now();
-            const point = { x: event.clientX, y: event.clientY };
-            const closeEnough = lastTouchPoint && Math.hypot(point.x - lastTouchPoint.x, point.y - lastTouchPoint.y) < TOUCH_DOUBLE_TAP_DISTANCE;
-            if (now - lastTouchTap < TOUCH_DOUBLE_TAP_MS && closeEnough) {
-                focusFromEvent(event, camera, scene);
-                lastTouchTap = 0;
-                lastTouchPoint = null;
-            } else {
-                lastTouchTap = now;
-                lastTouchPoint = point;
-            }
-        }
-
-        // Desktop browsers can deliver click/dblclick through overlays or
-        // controls in different orders. Detect the second pointer-up directly
-        // so double-click focus is reliable on Chrome/Edge/Firefox as well.
-        if (!touchPointer && !pointerMoved && !boxDragging && !isDraggingTransform()) {
-            const now = performance.now();
-            const point = { x: event.clientX, y: event.clientY };
-            const closeEnough = lastDesktopPoint && Math.hypot(point.x - lastDesktopPoint.x, point.y - lastDesktopPoint.y) <= DESKTOP_DOUBLE_CLICK_DISTANCE;
-            if (now - lastDesktopTap <= DESKTOP_DOUBLE_CLICK_MS && closeEnough) {
-                focusFromEvent(event, camera, scene);
-                suppressNextClick = true;
-                suppressNextDblClick = true;
-                lastDesktopTap = 0;
-                lastDesktopPoint = null;
-            } else {
-                lastDesktopTap = now;
-                lastDesktopPoint = point;
-            }
+            resetPointerState();
+            return;
         }
         resetPointerState();
     }, { passive: true });
 
     canvas.addEventListener("pointercancel", event => {
-        if (event.pointerType === "touch") activeTouchPointers.delete(event.pointerId);
         cancelBoxSelection();
-        resetPointerState();
-        suppressNextClick = true;
+        if (event.pointerId === pointerStart?.pointerId) resetPointerState();
     }, { passive: true });
 
+    // Selection is intentionally single-click/tap only. Focus is now an
+    // explicit Inspector "Set Focus" action, avoiding desktop double-click
+    // and mobile double-tap conflicts with camera gestures and zoom.
     canvas.addEventListener("click", event => {
-        if (suppressNextClick) {
-            suppressNextClick = false;
-            return;
-        }
-        if (event.button !== 0 || isDraggingTransform()) return;
-
-        if (event.detail >= 2) {
-            focusFromEvent(event, camera, scene);
-            return;
-        }
-
+        if (event.button !== 0 || pointerMoved || boxDragging || isDraggingTransform()) return;
         const target = pick(event, camera, scene);
         const toggle = event.ctrlKey || event.metaKey || event.shiftKey;
         if (target) selectObject(target, { toggle });
         else if (!toggle) clearSelection();
     }, { passive: true });
-
-    canvas.addEventListener("dblclick", event => {
-        if (suppressNextDblClick) {
-            suppressNextDblClick = false;
-            event.preventDefault();
-            event.stopPropagation();
-            return;
-        }
-        if (event.pointerType === "touch") return;
-        event.preventDefault();
-        event.stopPropagation();
-        focusFromEvent(event, camera, scene);
-    }, { passive: false, capture: true });
-}
-
-function focusFromEvent(event, camera, scene) {
-    const mode = getFocusMode();
-    const target = pickDeep(event, camera, scene, mode.group || null);
-    if (!target) return false;
-    if (consumeFocusTarget(target)) return true;
-    focusObject(target, { duration: 360 });
-    window.dispatchEvent(new CustomEvent("editor:status", { detail: `Focused ${target.name || target.type}` }));
-    return true;
 }
 
 function resetPointerState() { pointerStart = null; pointerMoved = false; }
@@ -238,24 +148,6 @@ function pick(event, camera, scene) {
     for (const hit of hits) {
         const target = findSelectableRoot(hit.object, scene);
         if (target) return target;
-    }
-    return null;
-}
-
-function pickDeep(event, camera, scene, focusGroup = null) {
-    const hits = raycastAll(event, camera, scene);
-    for (const hit of hits) {
-        let current = hit.object;
-        let firstMesh = null;
-        while (current && current !== scene) {
-            if (current.isMesh && !current.userData?.editorOnly) firstMesh ||= current;
-            if (focusGroup && current === focusGroup) return firstMesh || focusGroup;
-            if (!focusGroup && current.userData?.editorObject && !current.userData?.editorOnly) {
-                if (current.isMesh || current.userData?.selectable === true) return current;
-            }
-            current = current.parent;
-        }
-        if (!focusGroup && firstMesh) return firstMesh;
     }
     return null;
 }
@@ -285,7 +177,10 @@ function startBoxSelection(event, start) {
     selectionCanvas.setPointerCapture?.(event.pointerId);
     boxElement = document.createElement("div");
     boxElement.className = "selection-box-overlay";
-    boxElement.style.cssText = "position:fixed;z-index:70;pointer-events:none;border:1px solid #d97706;background:rgba(217,119,6,.10);box-sizing:border-box";
+    Object.assign(boxElement.style, {
+        position: "fixed", zIndex: "70", pointerEvents: "none",
+        border: "1px solid #d97706", background: "rgba(217,119,6,.10)", boxSizing: "border-box"
+    });
     document.body.appendChild(boxElement);
     updateBox(event);
 }
@@ -321,7 +216,7 @@ function finishBoxSelection(event, camera, scene) {
     else if (!(event.ctrlKey || event.metaKey)) clearSelection();
 }
 
-function cancelBoxSelection() { boxDragging = false; boxStart = null; removeBoxElement(); }
+function cancelBoxSelection() { removeBoxElement(); }
 function removeBoxElement() { boxElement?.remove(); boxElement = null; boxDragging = false; boxStart = null; }
 function normalizeObjects(objects) { return [...new Set((objects || []).filter(object => object?.userData?.editorObject && !object?.userData?.editorOnly))]; }
 
