@@ -132,8 +132,10 @@ function installTouchSafety() {
 
 function installQuality(profile) {
     if (!renderer) return;
-    const ratios = { performance: 1, balanced: Math.min(window.devicePixelRatio || 1, 1.5), high: Math.min(window.devicePixelRatio || 1, 2) };
-    renderer.setPixelRatio(ratios[profile.performance]);
+    const ratios = { performance: 1, balanced: Math.min(window.devicePixelRatio || 1, 1.25), high: Math.min(window.devicePixelRatio || 1, 2) };
+    const ratio = ratios[profile.performance];
+    renderer.userData.targetPixelRatio = ratio;
+    renderer.setPixelRatio(ratio);
     renderer.domElement.style.imageRendering = "auto";
 
     if (profile.performance === "performance") {
