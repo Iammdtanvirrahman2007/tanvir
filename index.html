@@ -1,21 +1,11 @@
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
-
     <meta charset="UTF-8">
-
-    <meta
-        name="viewport"
-        content="width=device-width, initial-scale=1.0"
-    >
-
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#17181c">
     <title>ModelForge 3D</title>
-
-    <link
-        rel="stylesheet"
-        href="style.css"
-    >
+    <link rel="stylesheet" href="style.css">
 
     <script type="importmap">
     {
@@ -25,159 +15,148 @@
         }
     }
     </script>
-
 </head>
 
 <body>
-
-    <!-- ========================================= -->
-    <!-- Top Toolbar -->
-    <!-- ========================================= -->
-
-    <div id="toolbar">
-
-        <div class="logo">
-            🚀 ModelForge 3D
+    <header id="topbar">
+        <div class="brand">
+            <div class="brand-mark">MF</div>
+            <div class="brand-copy">
+                <strong>ModelForge</strong>
+                <span>3D Editor</span>
+            </div>
         </div>
 
-        <div class="menu">
+        <nav class="app-menu" aria-label="Application menu">
+            <button class="menu-item" type="button">File</button>
+            <button class="menu-item" type="button">Edit</button>
+            <button class="menu-item" type="button">View</button>
+            <button class="menu-item" type="button">Object</button>
+        </nav>
 
-            <button id="newBtn">
-                Load
-            </button>
-
-            <button id="saveBtn">
-                Save
-            </button>
-            <button id="exportBtn">
-              Export
-              </button>
-             <button id="uploadBtn">
-                Upload
-            </button>
-
-            <button id="cubeBtn">
-                Cube
-            </button>
-
-            <button id="sphereBtn">
-                Sphere
-            </button>
-
-            <button id="cylinderBtn">
-                Cylinder
-            </button>
-
-            <button id="coneBtn">
-                Cone
-            </button>
-
-            <button id="planeBtn">
-                Plane
-            </button>
-
-            <button id="snapBtn">
-                Snap Off
-            </button>
-
-            <!-- NEW: Group System -->
-            <button id="groupBtn">
-                Group
-            </button>
-
-            <button id="ungroupBtn">
-                Ungroup
-            </button>
-
-            <button id="importBtn">
-                Import
-            </button>
-
-            <input
-                id="fileInput"
-                type="file"
-                accept=".glb,.gltf"
-                hidden
-            >
-
+        <div class="top-actions">
+            <button class="icon-btn" id="undoBtn" title="Undo (Ctrl+Z)" aria-label="Undo">↶</button>
+            <button class="icon-btn" id="redoBtn" title="Redo (Ctrl+Y)" aria-label="Redo">↷</button>
+            <span class="toolbar-divider"></span>
+            <button class="action-btn" id="newBtn">Load</button>
+            <button class="action-btn primary" id="saveBtn">Save</button>
+            <button class="action-btn" id="exportBtn">Export</button>
+            <button class="action-btn" id="uploadBtn">Upload</button>
         </div>
+    </header>
 
-    </div>
+    <main id="editor">
+        <aside id="leftPanel" class="panel">
+            <div class="panel-header">
+                <div>
+                    <span class="eyebrow">Workspace</span>
+                    <h2>Scene</h2>
+                </div>
+                <button class="panel-icon" id="sceneAddBtn" title="Add object">+</button>
+            </div>
 
+            <div class="scene-tools">
+                <div class="search-box">
+                    <span>⌕</span>
+                    <input id="sceneSearch" type="search" placeholder="Search scene..." autocomplete="off">
+                </div>
+                <button class="panel-icon" id="sceneOptionsBtn" title="Scene options">⋮</button>
+            </div>
 
-    <!-- ========================================= -->
-    <!-- Editor Layout -->
-    <!-- ========================================= -->
+            <div class="scene-tree-wrap">
+                <div class="tree-label">COLLECTION</div>
+                <ul id="sceneTree" aria-label="Scene hierarchy"></ul>
+            </div>
 
-    <div id="editor">
+            <div class="left-footer">
+                <button class="footer-tool" id="addCollectionBtn">+ Collection</button>
+                <button class="footer-tool" id="importBtn">Import</button>
+            </div>
+        </aside>
 
-        <!-- Left Panel : Hierarchy -->
+        <section id="viewport" aria-label="3D viewport">
+            <div class="viewport-overlay viewport-top-left">
+                <div class="viewport-chip"><span class="live-dot"></span> Perspective</div>
+                <div class="viewport-chip muted">User Perspective</div>
+            </div>
 
-        <div id="leftPanel">
+            <div class="viewport-overlay viewport-top-right">
+                <button class="viewport-btn" title="Toggle grid">Grid</button>
+                <button class="viewport-btn" title="Frame selected">Frame</button>
+                <button class="viewport-btn" title="Viewport options">⋮</button>
+            </div>
 
-            <h3>Scene</h3>
+            <div id="app"></div>
 
-            <ul id="sceneTree"></ul>
+            <div class="viewport-axis" aria-hidden="true">
+                <span class="axis-x">X</span>
+                <span class="axis-y">Y</span>
+                <span class="axis-z">Z</span>
+            </div>
 
-        </div>
+            <div class="viewport-overlay viewport-bottom-left">
+                <span>Left Mouse: Select</span>
+                <span>Middle: Orbit</span>
+                <span>Shift + Middle: Pan</span>
+            </div>
+        </section>
 
+        <aside id="rightPanel" class="panel">
+            <div class="panel-header inspector-header">
+                <div>
+                    <span class="eyebrow">Properties</span>
+                    <h2>Inspector</h2>
+                </div>
+                <button class="panel-icon" id="inspectorOptionsBtn" title="Inspector options">⋮</button>
+            </div>
 
-        <!-- 3D Viewport -->
+            <div class="inspector-tabs">
+                <button class="inspector-tab active" type="button">Object</button>
+                <button class="inspector-tab" type="button">Data</button>
+                <button class="inspector-tab" type="button">Material</button>
+            </div>
 
-        <div id="app"></div>
-
-
-        <!-- Right Panel : Inspector -->
-
-        <div id="rightPanel">
-
-            <h3>Inspector</h3>
-
-            <p>No object selected</p>
-
-        </div>
-
-    </div>
-
-
-    <!-- ========================================= -->
-    <!-- Bottom Toolbar -->
-    <!-- ========================================= -->
+            <div id="inspectorContent">
+                <div class="empty-inspector">
+                    <div class="empty-icon">◇</div>
+                    <strong>No object selected</strong>
+                    <p>Select an object in the viewport or Scene panel to inspect its properties.</p>
+                </div>
+            </div>
+        </aside>
+    </main>
 
     <div id="bottomToolbar">
+        <div class="tool-group">
+            <button id="selectBtn" class="tool-btn active" title="Select">↖ <span>Select</span></button>
+            <button id="moveBtn" class="tool-btn" title="Move (G)">✥ <span>Move</span></button>
+            <button id="rotateBtn" class="tool-btn" title="Rotate (R)">⟳ <span>Rotate</span></button>
+            <button id="scaleBtn" class="tool-btn" title="Scale (S)">⌗ <span>Scale</span></button>
+        </div>
 
-        <button id="moveBtn">
-            ✋ Move
-        </button>
+        <span class="toolbar-divider"></span>
 
-        <button id="rotateBtn">
-            🔄 Rotate
-        </button>
-
-        <button id="scaleBtn">
-            📏 Scale
-        </button>
-
+        <div class="tool-group">
+            <button id="snapBtn" class="tool-btn" title="Toggle snapping">Snap Off</button>
+            <button id="groupBtn" class="tool-btn" title="Group selected">Group</button>
+            <button id="ungroupBtn" class="tool-btn" title="Ungroup selected">Ungroup</button>
+        </div>
     </div>
 
+    <footer id="statusBar">
+        <div class="status-left">
+            <span class="status-indicator"></span>
+            <span id="statusText">Ready</span>
+        </div>
+        <div class="status-center">ModelForge 3D</div>
+        <div class="status-right">
+            <span>Objects <strong id="objectCount">0</strong></span>
+            <span>FPS <strong id="fpsCounter">--</strong></span>
+        </div>
+    </footer>
 
-    <!-- ========================================= -->
-    <!-- Status Bar -->
-    <!-- ========================================= -->
+    <input id="fileInput" type="file" accept=".glb,.gltf" hidden>
 
-    <div id="statusBar">
-        Ready
-    </div>
-
-
-    <!-- ========================================= -->
-    <!-- Main Script -->
-    <!-- ========================================= -->
-
-    <script
-        type="module"
-        src="main.js"
-    ></script>
-
+    <script type="module" src="main.js"></script>
 </body>
 </html>
