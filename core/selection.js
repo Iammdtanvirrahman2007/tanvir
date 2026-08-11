@@ -1,200 +1,122 @@
-import {
-    setActiveHierarchy
-} from "../ui/hierarchy.js";
-
-import {
-    attachTransform,
-    detachTransform,
-    isDraggingTransform
-} from "./transform.js";
-
 import * as THREE from "three";
-
-import {
-    updateInspector
-} from "../ui/inspector.js";
-
-import {
-    highlight
-} from "./highlight.js";
-
-// Multi Select Support
-import {
-    toggleMultiSelect
-} from "./grouping.js";
+import { attachTransform, detachTransform, isDraggingTransform } from "./transform.js";
+import { updateInspector } from "../ui/inspector.js";
+import { highlight } from "./highlight.js";
+import { toggleMultiSelect, clearMultiSelection, getMultiSelection, setMultiSelection } from "./grouping.js";
+import { setActiveHierarchy, clearHierarchySelection } from "../ui/hierarchy.js";
 
 const raycaster = new THREE.Raycaster();
 const mouse = new THREE.Vector2();
-
 let selected = null;
-
-// ==========================================
-// Get Selected Object
-// ==========================================
 
 export function getSelected() {
     return selected;
 }
 
-// ==========================================
-// Clear Selection
-// ==========================================
-
-export function clearSelection() {
-
-    selected = null;
-
-    detachTransform();
-
-    highlight(null);
-
-    updateInspector(null);
-
-    setActiveHierarchy(null);
+export function getSelection() {
+    return selected ? [selected] : getMultiSelection();
 }
 
-// ==========================================
-// Select Object
-// ==========================================
+export function clearSelection() {
+    selected = null;
+    clearMultiSelection();
+    detachTransform();
+    highlight(null);
+    updateInspector(null);
+    clearHierarchySelection();
+    window.dispatchEvent(new CustomEvent("editor:selection-change", { detail: null }));
+}
 
-export function selectObject(object) {
-
+export function selectObject(object, options = {}) {
     if (!object) {
         clearSelection();
         return;
     }
 
-    selected = object;
-
-    attachTransform(object);
-
-    highlight(object);
-
-    updateInspector(object);
-
-    setActiveHierarchy(object);
-}
-
-// ==========================================
-// Find Top Selectable Parent
-// ==========================================
-
-function findSelectableRoot(object, scene) {
-
-    let current = object;
-    let selectable = object;
-
-    while (current.parent && current.parent !== scene) {
-
-        current = current.parent;
-
-        if (current.userData.selectable === true) {
-            selectable = current;
+    if (options.toggle) {
+        toggleMultiSelect(object);
+        const selection = getMultiSelection();
+        selected = selection.length ? selection[selection.length - 1] : null;
+        if (selection.length === 1) {
+            attachTransform(selection[0]);
+            highlight(selection[0]);
+            updateInspector(selection[0]);
+            setActiveHierarchy(selection[0]);
+        } else {
+            detachTransform();
+            highlight(null);
+            updateInspector(null);
         }
+        window.dispatchEvent(new CustomEvent("editor:selection-change", { detail: selection }));
+        return;
     }
 
-    return selectable;
+    selected = object;
+    setMultiSelection([object]);
+    attachTransform(object);
+    highlight(object);
+    updateInspector(object);
+    setActiveHierarchy(object);
+    window.dispatchEvent(new CustomEvent("editor:selection-change", { detail: [object] }));
 }
 
-// ==========================================
-// Selection System
-// ==========================================
+export function selectMultiple(objects) {
+    const valid = objects.filter(Boolean);
+    if (!valid.length) return clearSelection();
+
+    setMultiSelection(valid);
+    selected = valid[valid.length - 1];
+
+    if (valid.length === 1) {
+        attachTransform(selected);
+        highlight(selected);
+        updateInspector(selected);
+        setActiveHierarchy(selected);
+    } else {
+        detachTransform();
+        highlight(null);
+        updateInspector(null);
+    }
+
+    window.dispatchEvent(new CustomEvent("editor:selection-change", { detail: valid }));
+}
 
 export function setupSelection(renderer, camera, scene) {
+    const canvas = renderer.domElement;
 
-    renderer.domElement.addEventListener("pointerdown", event => {
+    canvas.addEventListener("pointerdown", event => {
+        if (event.button !== 0 || isDraggingTransform()) return;
 
-        // Transform gizmo drag হলে ignore
-        if (isDraggingTransform()) return;
-
-        const rect = renderer.domElement.getBoundingClientRect();
-
+        const rect = canvas.getBoundingClientRect();
         mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
         mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
-
         raycaster.setFromCamera(mouse, camera);
 
-        // সব child সহ raycast[cite: 4]
         const hits = raycaster.intersectObjects(scene.children, true);
-
         let target = null;
 
         for (const hit of hits) {
-
-            const obj = hit.object;
-
-            // ==========================================
-            // Ignore Scene
-            // ==========================================
-
-            if (obj === scene) {
-                continue;
-            }
-
-            // ==========================================
-            // Direct selectable object (Plane সহ সব শেপ পাবে)
-            // ==========================================
-
-            if (obj.userData.selectable === true) {
-
-                target = findSelectableRoot(obj, scene);
-
-                break;
-            }
-
-            // ==========================================
-            // Search parent chain
-            // ==========================================
-
-            let parent = obj.parent;
-
-            while (parent && parent !== scene) {
-
-                if (parent.userData.selectable === true) {
-
-                    target = findSelectableRoot(parent, scene);
-
-                    break;
-                }
-
-                parent = parent.parent;
-            }
-
+            target = findSelectableRoot(hit.object, scene);
             if (target) break;
         }
 
-        // ==========================================
-        // Nothing Selected
-        // ==========================================
-
         if (!target) {
-
             clearSelection();
-
-            console.log("Nothing Selected");
-
             return;
         }
 
-        // ======================================
-        // Ctrl + Click = Multi Select
-        // ======================================
-
-        if (event.ctrlKey) {
-
-            toggleMultiSelect(target);
-
-            console.log("Multi Selected:", target.name);
-
-            return;
-        }
-
-        // ======================================
-        // Normal Single Selection
-        // ======================================
-
-        selectObject(target);
-
-        console.log("Selected:", target.name || target.type);
+        selectObject(target, { toggle: event.ctrlKey || event.metaKey });
     });
+}
+
+function findSelectableRoot(object, scene) {
+    let current = object;
+    let candidate = null;
+
+    while (current && current !== scene) {
+        if (current.userData?.selectable === true) candidate = current;
+        current = current.parent;
+    }
+
+    return candidate;
 }
