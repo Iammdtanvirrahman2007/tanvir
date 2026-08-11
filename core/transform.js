@@ -7,6 +7,7 @@ let transform = null;
 let snapEnabled = false;
 let snapValues = { translation: 1, rotation: 15, scale: 0.1 };
 let startState = null;
+let pivotState = null;
 
 export function setupTransform(camera, renderer, scene, orbitControls) {
     transform = new TransformControls(camera, renderer.domElement);
@@ -44,11 +45,60 @@ export function setupTransform(camera, renderer, scene, orbitControls) {
 
 export function attachTransform(object) {
     if (!transform || !object) return;
+    clearPivot();
     transform.attach(object);
     refreshInspector();
 }
 
-export function detachTransform() { transform?.detach(); }
+/**
+ * Attach a selected group to an invisible pivot at a world-space point.
+ * The pivot is editor-only, so it never appears in the hierarchy or gets saved.
+ * Moving/rotating/scaling the TransformControls now acts around this point.
+ */
+export function attachTransformPivot(object, worldPoint) {
+    if (!transform || !object || !worldPoint) return false;
+    if (!object.parent) return false;
+
+    clearPivot();
+    object.updateMatrixWorld(true);
+    const parent = object.parent;
+    const pivot = new THREE.Group();
+    pivot.name = "__editorTransformPivot";
+    pivot.userData = { editorOnly: true, editorTransformPivot: true };
+
+    parent.add(pivot);
+    pivot.position.copy(parent.worldToLocal(worldPoint.clone()));
+    pivot.updateMatrixWorld(true);
+    pivot.attach(object);
+
+    pivotState = { pivot, object, parent };
+    transform.attach(pivot);
+    refreshInspector();
+    window.dispatchEvent(new CustomEvent("editor:transform-pivot-change", {
+        detail: { object, point: worldPoint.clone(), active: true }
+    }));
+    return true;
+}
+
+export function clearPivot() {
+    if (!pivotState) return;
+    const { pivot, object, parent } = pivotState;
+    transform?.detach();
+    if (object && parent) {
+        parent.attach(object);
+    }
+    pivot.parent?.remove(pivot);
+    pivotState = null;
+    window.dispatchEvent(new CustomEvent("editor:transform-pivot-change", { detail: { active: false } }));
+}
+
+export function hasTransformPivot() { return !!pivotState; }
+export function getTransformPivot() { return pivotState?.pivot || null; }
+
+export function detachTransform() {
+    clearPivot();
+    transform?.detach();
+}
 
 export function setTransformMode(mode) {
     if (!transform || !["translate", "rotate", "scale"].includes(mode)) return;
@@ -97,7 +147,11 @@ function applySnapSettings() {
 }
 
 function capture(object) {
-    return { position: object.position.clone(), rotation: object.rotation.clone(), scale: object.scale.clone() };
+    return {
+        position: object.position.clone(),
+        rotation: object.rotation.clone(),
+        scale: object.scale.clone()
+    };
 }
 
 function restore(object, state) {
