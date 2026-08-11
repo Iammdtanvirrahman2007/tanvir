@@ -20,7 +20,7 @@ export function focusGroupAverage(group, options = {}) {
     const average = new THREE.Vector3();
     for (const object of objects) {
         object.updateMatrixWorld(true);
-        average.add(object.getWorldPosition(new THREE.Vector3()));
+        average.add(new THREE.Box3().setFromObject(object).getCenter(new THREE.Vector3()));
     }
     average.multiplyScalar(1 / objects.length);
     return focusPoint(average, group, options);
@@ -29,9 +29,14 @@ export function focusGroupAverage(group, options = {}) {
 export function getFocusObjects(group) {
     const result = [];
     group.traverse(child => {
-        if (child === group) return;
-        if (child.userData?.editorOnly) return;
-        if (child.isMesh || child.userData?.selectable === true || child.userData?.editorObject === true) result.push(child);
+        if (child === group || child.userData?.editorOnly || !child.isMesh) return;
+        let parent = child.parent;
+        let nestedMesh = false;
+        while (parent && parent !== group) {
+            if (parent.isMesh) { nestedMesh = true; break; }
+            parent = parent.parent;
+        }
+        if (!nestedMesh) result.push(child);
     });
     return result;
 }
