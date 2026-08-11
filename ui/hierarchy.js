@@ -1,9 +1,10 @@
-import { selectObject } from "../core/selection.js";
+import { selectObject, clearSelection } from "../core/selection.js";
 import { updateInspector } from "./inspector.js";
 
 let activeUuid = null;
 let filterText = "";
 let sceneRoot = null;
+let draggedObject = null;
 
 const TYPE_ICONS = { Group: "▣", Mesh: "◇", default: "◇" };
 
@@ -29,7 +30,6 @@ export function rebuildHierarchy() {
     if (!tree.children.length) {
         const empty = document.createElement("li");
         empty.className = "tree-empty";
-        empty.style.cssText = "padding:18px 10px;color:#626671;font-size:11px;text-align:center";
         empty.textContent = filterText ? "No matching objects" : "Scene is empty";
         tree.appendChild(empty);
     }
@@ -41,10 +41,13 @@ function createTreeItem(object, depth) {
 
     const item = document.createElement("li");
     item.dataset.uuid = object.uuid;
+    item.draggable = true;
+
     const row = document.createElement("div");
-    row.className = `tree-row${object.uuid === activeUuid ? " active" : ""}`;
+    row.className = `tree-row${object.uuid === activeUuid ? " active" : ""}${object.visible === false ? " hidden-object" : ""}`;
     row.dataset.uuid = object.uuid;
     row.style.paddingLeft = `${6 + depth * 12}px`;
+    row.title = "Click select · Double-click rename · Drag to reparent/reorder · Right-click actions";
 
     const arrow = document.createElement("span");
     arrow.className = "tree-arrow";
@@ -57,15 +60,21 @@ function createTreeItem(object, depth) {
     const kind = document.createElement("span");
     kind.className = "tree-kind";
     kind.textContent = object.isGroup ? "GROUP" : "";
-    row.append(arrow, icon, label, kind);
+
+    const actions = document.createElement("span");
+    actions.className = "tree-actions";
+    const visibility = makeAction(object.visible === false ? "○" : "●", object.visible === false ? "Show" : "Hide");
+    const lock = makeAction(object.userData?.editorLocked ? "🔒" : "□", object.userData?.editorLocked ? "Unlock" : "Lock");
+    actions.append(visibility, lock);
+    row.append(arrow, icon, label, kind, actions);
     item.appendChild(row);
 
-    let childList = null;
+    const childList = document.createElement("ul");
+    childList.className = "tree-children";
     const expanded = object.userData.hierarchyExpanded !== false;
     if (children.length) {
         arrow.textContent = expanded ? "▾" : "▸";
-        childList = document.createElement("ul");
-        childList.className = `tree-children${expanded ? " open" : ""}`;
+        if (expanded) childList.classList.add("open");
         children.forEach(child => {
             const childItem = createTreeItem(child, depth + 1);
             if (childItem) childList.appendChild(childItem);
@@ -74,8 +83,28 @@ function createTreeItem(object, depth) {
     }
 
     row.addEventListener("click", event => {
+        if (event.target.closest(".tree-actions")) return;
         event.stopPropagation();
-        selectObject(object, { toggle: event.ctrlKey || event.metaKey });
+        if (object.userData?.editorLocked) return;
+        selectObject(object, { toggle: event.ctrlKey || event.metaKey, additive: event.shiftKey });
+        setActiveHierarchy(object);
+    });
+
+    visibility.addEventListener("click", event => {
+        event.stopPropagation();
+        object.visible = !object.visible;
+        visibility.textContent = object.visible ? "●" : "○";
+        row.classList.toggle("hidden-object", !object.visible);
+        window.dispatchEvent(new CustomEvent("editor:status", { detail: `${object.visible ? "Shown" : "Hidden"} ${object.name}` }));
+    });
+
+    lock.addEventListener("click", event => {
+        event.stopPropagation();
+        object.userData.editorLocked = !object.userData.editorLocked;
+        lock.textContent = object.userData.editorLocked ? "🔒" : "□";
+        row.classList.toggle("locked-object", object.userData.editorLocked);
+        if (object.userData.editorLocked && activeUuid === object.uuid) clearSelection?.();
+        window.dispatchEvent(new CustomEvent("editor:status", { detail: `${object.userData.editorLocked ? "Locked" : "Unlocked"} ${object.name}` }));
     });
 
     if (children.length) {
@@ -87,16 +116,76 @@ function createTreeItem(object, depth) {
     }
 
     row.addEventListener("dblclick", event => {
+        if (event.target.closest(".tree-actions")) return;
         event.stopPropagation();
         beginRename(label, object);
     });
 
     row.addEventListener("contextmenu", event => {
         event.preventDefault();
+        event.stopPropagation();
         selectObject(object);
+        setActiveHierarchy(object);
+        showContextMenu(event.clientX, event.clientY, object);
+    });
+
+    item.addEventListener("dragstart", event => {
+        if (object.userData?.editorLocked) { event.preventDefault(); return; }
+        draggedObject = object;
+        item.classList.add("dragging");
+        event.dataTransfer.effectAllowed = "move";
+        event.dataTransfer.setData("text/plain", object.uuid);
+    });
+    item.addEventListener("dragend", () => { draggedObject = null; item.classList.remove("dragging"); document.querySelectorAll(".tree-drop-target").forEach(el => el.classList.remove("tree-drop-target")); });
+    row.addEventListener("dragover", event => {
+        if (!draggedObject || draggedObject === object || draggedObject === sceneRoot || draggedObject.getObjectById?.(object.id)) return;
+        event.preventDefault();
+        row.classList.add("tree-drop-target");
+        event.dataTransfer.dropEffect = "move";
+    });
+    row.addEventListener("dragleave", () => row.classList.remove("tree-drop-target"));
+    row.addEventListener("drop", event => {
+        event.preventDefault();
+        row.classList.remove("tree-drop-target");
+        if (!draggedObject || draggedObject === object || draggedObject === sceneRoot || draggedObject.getObjectById?.(object.id)) return;
+        object.add(draggedObject);
+        object.userData.hierarchyExpanded = true;
+        rebuildHierarchy();
+        selectObject(draggedObject);
+        setActiveHierarchy(draggedObject);
+        window.dispatchEvent(new CustomEvent("editor:status", { detail: `${draggedObject.name} parented to ${object.name}` }));
     });
 
     return item;
+}
+
+function makeAction(text, title) {
+    const button = document.createElement("button");
+    button.className = "tree-action";
+    button.type = "button";
+    button.textContent = text;
+    button.title = title;
+    return button;
+}
+
+function showContextMenu(x, y, object) {
+    document.getElementById("hierarchyContextMenu")?.remove();
+    const menu = document.createElement("div");
+    menu.id = "hierarchyContextMenu";
+    menu.className = "hierarchy-context-menu";
+    const entries = [
+        ["Rename", () => { const row = document.querySelector(`.tree-row[data-uuid="${object.uuid}"] .tree-name`); if (row) beginRename(row, object); }],
+        [object.visible === false ? "Show" : "Hide", () => { object.visible = !object.visible; rebuildHierarchy(); }],
+        [object.userData?.editorLocked ? "Unlock" : "Lock", () => { object.userData.editorLocked = !object.userData.editorLocked; rebuildHierarchy(); }],
+        ["Frame Selected", () => document.getElementById("frameBtn")?.click()],
+        ["Delete", () => window.dispatchEvent(new CustomEvent("editor:delete-object", { detail: object }))]
+    ];
+    entries.forEach(([text, action]) => { const button = document.createElement("button"); button.textContent = text; button.addEventListener("click", () => { menu.remove(); action(); }); menu.appendChild(button); });
+    document.body.appendChild(menu);
+    menu.style.left = `${Math.min(x, window.innerWidth - 180)}px`;
+    menu.style.top = `${Math.min(y, window.innerHeight - menu.offsetHeight - 8)}px`;
+    const close = event => { if (!menu.contains(event.target)) { menu.remove(); document.removeEventListener("pointerdown", close); } };
+    setTimeout(() => document.addEventListener("pointerdown", close), 0);
 }
 
 function beginRename(label, object) {
@@ -129,10 +218,7 @@ export function setActiveHierarchy(object) {
     document.querySelectorAll(".tree-row.active").forEach(row => row.classList.remove("active"));
     if (!activeUuid) return;
     const row = document.querySelector(`.tree-row[data-uuid="${activeUuid}"]`);
-    if (row) {
-        row.classList.add("active");
-        row.scrollIntoView({ block: "nearest" });
-    }
+    if (row) { row.classList.add("active"); row.scrollIntoView({ block: "nearest" }); }
 }
 
 export function clearHierarchySelection() {
@@ -140,8 +226,6 @@ export function clearHierarchySelection() {
     document.querySelectorAll(".tree-row.active").forEach(row => row.classList.remove("active"));
 }
 
-function isEditorObject(object) {
-    return !!object && !object.userData?.editorOnly && (object.isMesh || object.isGroup || object.userData?.selectable === true);
-}
+function isEditorObject(object) { return !!object && !object.userData?.editorOnly && (object.isMesh || object.isGroup || object.userData?.selectable === true); }
 function matchesFilter(object) { return !filterText || `${object.name || ""} ${object.type || ""}`.toLowerCase().includes(filterText); }
 function matchesTreeBranch(object) { return matchesFilter(object) || object.children.some(child => isEditorObject(child) && matchesTreeBranch(child)); }
