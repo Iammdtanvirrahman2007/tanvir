@@ -14,44 +14,14 @@ export function loadScene(scene) {
         const reader = new FileReader();
         reader.onload = () => {
             try {
-                const data = JSON.parse(reader.result);
-                if (!Array.isArray(data)) throw new Error("Scene data must be an array.");
+                const parsed = JSON.parse(reader.result);
+                const roots = Array.isArray(parsed) ? parsed : parsed.objects;
+                if (!Array.isArray(roots)) throw new Error("Invalid ModelForge scene.");
 
                 clearObjects(scene);
-
-                for (const item of data) {
-                    const geometry = createGeometry(item.type);
-                    if (!geometry) continue;
-
-                    const materialData = Array.isArray(item.materials) && item.materials.length
-                        ? item.materials
-                        : [{ color: 0xffffff }];
-
-                    const materials = materialData.map(material => new THREE.MeshStandardMaterial({
-                        color: material.color ?? 0xffffff,
-                        metalness: material.metalness ?? 0,
-                        roughness: material.roughness ?? 1,
-                        opacity: material.opacity ?? 1,
-                        transparent: material.transparent ?? false,
-                        wireframe: material.wireframe ?? false,
-                        side: THREE.DoubleSide
-                    }));
-
-                    const mesh = new THREE.Mesh(geometry, materials.length === 1 ? materials[0] : materials);
-                    mesh.name = item.name || "Object";
-                    mesh.position.set(item.position?.x ?? 0, item.position?.y ?? 0, item.position?.z ?? 0);
-                    mesh.rotation.set(item.rotation?.x ?? 0, item.rotation?.y ?? 0, item.rotation?.z ?? 0);
-                    mesh.scale.set(item.scale?.x ?? 1, item.scale?.y ?? 1, item.scale?.z ?? 1);
-                    mesh.visible = item.visible ?? true;
-                    mesh.castShadow = true;
-                    mesh.receiveShadow = true;
-                    mesh.userData.selectable = true;
-                    mesh.userData.editorObject = true;
-                    addObject(scene, mesh);
-                }
-
+                roots.forEach(data => restoreObject(scene, data));
                 rebuildHierarchy();
-                window.dispatchEvent(new CustomEvent("editor:status", { detail: `Loaded ${data.length} objects` }));
+                window.dispatchEvent(new CustomEvent("editor:status", { detail: `Loaded ${roots.length} objects` }));
             } catch (error) {
                 console.error("Load failed:", error);
                 window.dispatchEvent(new CustomEvent("editor:status", { detail: "Invalid scene file" }));
@@ -62,6 +32,53 @@ export function loadScene(scene) {
     }, { once: true });
 
     input.click();
+}
+
+function restoreObject(parent, data) {
+    if (!data) return null;
+
+    let object;
+    if (data.kind === "Group" || data.type === "Group") {
+        object = new THREE.Group();
+        object.userData.selectable = true;
+    } else {
+        const geometry = createGeometry(data.type);
+        if (!geometry) return null;
+        const materials = (data.materials || []).map(createMaterial);
+        const material = materials.length === 1 ? materials[0] : materials.length ? materials : new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.65 });
+        object = new THREE.Mesh(geometry, material);
+        object.castShadow = true;
+        object.receiveShadow = true;
+        object.userData.selectable = true;
+    }
+
+    object.name = data.name || "Object";
+    object.visible = data.visible ?? true;
+    object.position.fromArray(normalizeVector(data.position, [0, 0, 0]));
+    object.rotation.set(...normalizeVector(data.rotation, [0, 0, 0]));
+    object.scale.fromArray(normalizeVector(data.scale, [1, 1, 1]));
+    object.userData.editorObject = true;
+    Object.assign(object.userData, data.userData || {});
+
+    parent.add(object);
+    addObject(parent === parent.scene ? parent : parent.scene, object);
+
+    (data.children || []).forEach(child => restoreObject(object, child));
+    return object;
+}
+
+function createMaterial(data) {
+    const material = new THREE.MeshStandardMaterial({
+        color: data.color ?? 0xffffff,
+        metalness: data.metalness ?? 0,
+        roughness: data.roughness ?? 1,
+        opacity: data.opacity ?? 1,
+        transparent: data.transparent ?? false,
+        wireframe: data.wireframe ?? false,
+        side: data.side ?? THREE.FrontSide
+    });
+    material.name = data.name || "";
+    return material;
 }
 
 function createGeometry(type) {
@@ -75,4 +92,9 @@ function createGeometry(type) {
         case "TorusGeometry": return new THREE.TorusGeometry(0.5, 0.2, 16, 64);
         default: return null;
     }
+}
+
+function normalizeVector(value, fallback) {
+    if (!Array.isArray(value) || value.length < 3) return fallback;
+    return [Number(value[0]) || 0, Number(value[1]) || 0, Number(value[2]) || 0];
 }
