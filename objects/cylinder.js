@@ -3,68 +3,16 @@ import * as THREE from "three";
 let cylinderCount = 1;
 
 export function createCylinder() {
-
-    const geometry =
-        new THREE.CylinderGeometry(
-            0.5,
-            0.5,
-            2,
-            32
-        );
-
-    // ==========================
-    // Top, Side, Bottom
-    // ==========================
-
-    const materials = [
-
-        new THREE.MeshStandardMaterial({
-
-            color: Math.random() * 0xffffff
-
-        }),
-
-        new THREE.MeshStandardMaterial({
-
-            color: Math.random() * 0xffffff
-
-        }),
-
-        new THREE.MeshStandardMaterial({
-
-            color: Math.random() * 0xffffff
-
-        })
-
-    ];
-
-    const cylinder =
-        new THREE.Mesh(
-
-            geometry,
-            materials
-
-        );
-
-    cylinder.position.set(
-
-        (Math.random() - 0.5) * 8,
-
-        1,
-
-        (Math.random() - 0.5) * 8
-
+    const cylinder = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.5, 0.5, 2, 32),
+        new THREE.MeshStandardMaterial({ color: 0x78869a, roughness: 0.6, metalness: 0.12 })
     );
 
+    cylinder.position.set(0, 1, 0);
     cylinder.castShadow = true;
-
     cylinder.receiveShadow = true;
-
     cylinder.userData.selectable = true;
-
-    cylinder.name =
-        "Cylinder " + cylinderCount++;
-
+    cylinder.userData.editorObject = true;
+    cylinder.name = `Cylinder ${cylinderCount++}`;
     return cylinder;
-
 }
