@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import { attachTransform, detachTransform, isDraggingTransform, getTransform } from "./transform.js";
 import { updateInspector } from "../ui/inspector.js";
-import { highlight } from "./highlight.js";
+import { highlight, highlightMultiple, clearHighlight } from "./highlight.js";
 import { toggleMultiSelect, clearMultiSelection, getMultiSelection, setMultiSelection } from "./grouping.js";
 import { setActiveHierarchy, clearHierarchySelection } from "../ui/hierarchy.js";
 
@@ -22,7 +22,7 @@ export function clearSelection() {
     selected = null;
     clearMultiSelection();
     detachTransform();
-    highlight(null);
+    clearHighlight();
     updateInspector(null);
     clearHierarchySelection();
     window.dispatchEvent(new CustomEvent("editor:selection-change", { detail: [] }));
@@ -35,23 +35,7 @@ export function selectObject(object, options = {}) {
         toggleMultiSelect(object);
         const selection = getMultiSelection();
         selected = selection.length ? selection[selection.length - 1] : null;
-        if (selection.length === 1) {
-            attachTransform(selection[0]);
-            highlight(selection[0]);
-            updateInspector(selection[0]);
-            setActiveHierarchy(selection[0]);
-        } else if (selection.length > 1) {
-            detachTransform();
-            highlight(null);
-            selection.forEach(item => highlight(item));
-            updateInspector(null);
-            clearHierarchySelection();
-        } else {
-            detachTransform();
-            highlight(null);
-            updateInspector(null);
-            clearHierarchySelection();
-        }
+        applySelectionVisuals(selection);
         window.dispatchEvent(new CustomEvent("editor:selection-change", { detail: selection }));
         return;
     }
@@ -70,20 +54,32 @@ export function selectMultiple(objects, options = {}) {
     if (!valid.length) return clearSelection();
     setMultiSelection(valid);
     selected = valid[valid.length - 1];
+    applySelectionVisuals(valid, options);
+    window.dispatchEvent(new CustomEvent("editor:selection-change", { detail: valid }));
+}
 
-    if (valid.length === 1) {
-        attachTransform(selected);
-        highlight(selected);
-        updateInspector(selected);
-        setActiveHierarchy(selected);
-    } else {
+function applySelectionVisuals(selection, options = {}) {
+    if (selection.length === 0) {
         detachTransform();
-        highlight(null);
-        if (options.highlight !== false) valid.forEach(object => highlight(object));
+        clearHighlight();
         updateInspector(null);
         clearHierarchySelection();
+        return;
     }
-    window.dispatchEvent(new CustomEvent("editor:selection-change", { detail: valid }));
+
+    if (selection.length === 1) {
+        attachTransform(selection[0]);
+        highlight(selection[0]);
+        updateInspector(selection[0]);
+        setActiveHierarchy(selection[0]);
+        return;
+    }
+
+    detachTransform();
+    if (options.highlight !== false) highlightMultiple(selection);
+    else clearHighlight();
+    updateInspector(null);
+    clearHierarchySelection();
 }
 
 export function setupSelection(renderer, camera, scene) {
