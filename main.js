@@ -32,11 +32,9 @@ function boot() {
     setupImporter(scene);
     setupExporter(scene);
     setupUpload(scene);
-
     const defaultCube = createDefaultCube();
     addToHierarchy(defaultCube);
     updateInspector(null);
-
     bindUI();
     bindEditorEvents();
     bindKeyboard();
@@ -70,6 +68,7 @@ function bindUI() {
 function bindEditorEvents() {
     window.addEventListener("editor:selection-change", event => { const selection = event.detail || []; if (selection.length === 1) setStatus(`Selected ${selection[0].name || selection[0].type}`); else if (selection.length > 1) setStatus(`${selection.length} objects selected`); else setStatus("Ready"); updateObjectCount(); });
     window.addEventListener("editor:status", event => setStatus(event.detail || "Ready"));
+    window.addEventListener("editor:hierarchy-refresh", rebuildHierarchy);
     window.addEventListener("editor:history-change", updateHistoryButtons);
     window.addEventListener("editor:frame", event => { const fps = event.detail?.fps ?? getFPS(); const el = document.getElementById("fpsCounter"); if (el) el.textContent = fps; });
     window.addEventListener("editor:transform-mode", event => { state.transformMode = event.detail; syncToolButtons(); });
@@ -94,54 +93,13 @@ function bindKeyboard() {
 
 function activateTool(mode) {
     if (mode === "select") { state.transformMode = "select"; syncToolButtons(); setStatus("Select tool"); return; }
-    setTransformMode(mode);
-    state.transformMode = mode;
-    syncToolButtons();
-    setStatus(`${mode[0].toUpperCase()}${mode.slice(1)} tool`);
+    setTransformMode(mode); state.transformMode = mode; syncToolButtons(); setStatus(`${mode[0].toUpperCase()}${mode.slice(1)} tool`);
 }
-
-function syncToolButtons() {
-    const map = { select: "selectBtn", translate: "moveBtn", rotate: "rotateBtn", scale: "scaleBtn" };
-    Object.values(map).forEach(id => document.getElementById(id)?.classList.remove("active"));
-    document.getElementById(map[state.transformMode])?.classList.add("active");
-}
-
-function add(type) {
-    const object = createObject(type);
-    if (!object) return;
-    addObject(scene, object);
-    addToHierarchy(object);
-    setStatus(`Added ${object.name}`);
-    updateObjectCount();
-}
-
-function toggleAddMenu(anchor) {
-    const popover = document.getElementById("menuPopover");
-    if (!popover) return;
-    if (!popover.hidden) return closeMenu();
-    popover.innerHTML = `<button data-add="cube">Cube <span class="shortcut">Shift+C</span></button><button data-add="sphere">Sphere</button><button data-add="cylinder">Cylinder</button><button data-add="cone">Cone</button><button data-add="plane">Plane</button>`;
-    popover.querySelectorAll("[data-add]").forEach(button => button.addEventListener("click", () => { add(button.dataset.add); closeMenu(); }));
-    const rect = anchor.getBoundingClientRect();
-    popover.style.left = `${Math.min(rect.left, window.innerWidth - 205)}px`;
-    popover.style.top = `${rect.bottom + 4}px`;
-    popover.hidden = false;
-}
-
+function syncToolButtons() { const map = { select: "selectBtn", translate: "moveBtn", rotate: "rotateBtn", scale: "scaleBtn" }; Object.values(map).forEach(id => document.getElementById(id)?.classList.remove("active")); document.getElementById(map[state.transformMode])?.classList.add("active"); }
+function add(type) { const object = createObject(type); if (!object) return; addObject(scene, object); addToHierarchy(object); setStatus(`Added ${object.name}`); updateObjectCount(); }
+function toggleAddMenu(anchor) { const popover = document.getElementById("menuPopover"); if (!popover) return; if (!popover.hidden) return closeMenu(); popover.innerHTML = `<button data-add="cube">Cube <span class="shortcut">Shift+C</span></button><button data-add="sphere">Sphere</button><button data-add="cylinder">Cylinder</button><button data-add="cone">Cone</button><button data-add="plane">Plane</button>`; popover.querySelectorAll("[data-add]").forEach(button => button.addEventListener("click", () => { add(button.dataset.add); closeMenu(); })); const rect = anchor.getBoundingClientRect(); popover.style.left = `${Math.min(rect.left, window.innerWidth - 205)}px`; popover.style.top = `${rect.bottom + 4}px`; popover.hidden = false; }
 function closeMenu() { const popover = document.getElementById("menuPopover"); if (popover) popover.hidden = true; }
-
-function frameSelected() {
-    const object = getSelected();
-    if (!object) return setStatus("Nothing selected");
-    const box = new THREE.Box3().setFromObject(object);
-    const sphere = box.getBoundingSphere(new THREE.Sphere());
-    const distance = Math.max(sphere.radius * 3, 2);
-    const direction = camera.position.clone().sub(controls.target).normalize();
-    camera.position.copy(sphere.center).add(direction.multiplyScalar(distance));
-    controls.target.copy(sphere.center);
-    controls.update();
-    setStatus(`Framed ${object.name || object.type}`);
-}
-
+function frameSelected() { const object = getSelected(); if (!object) return setStatus("Nothing selected"); const box = new THREE.Box3().setFromObject(object); const sphere = box.getBoundingSphere(new THREE.Sphere()); const distance = Math.max(sphere.radius * 3, 2); const direction = camera.position.clone().sub(controls.target).normalize(); camera.position.copy(sphere.center).add(direction.multiplyScalar(distance)); controls.target.copy(sphere.center); controls.update(); setStatus(`Framed ${object.name || object.type}`); }
 function updateObjectCount() { const count = document.getElementById("objectCount"); if (count) count.textContent = getObjects().length; }
 function updateHistoryButtons() { const undoButton = document.getElementById("undoBtn"); const redoButton = document.getElementById("redoBtn"); if (undoButton) undoButton.disabled = !canUndo(); if (redoButton) redoButton.disabled = !canRedo(); }
 function setStatus(message) { state.lastStatus = message; const text = document.getElementById("statusText"); if (text) text.textContent = message; }
