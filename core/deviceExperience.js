@@ -131,16 +131,25 @@ function installTouchSafety() {
 }
 
 function installQuality(profile) {
+    // initDeviceExperience normally runs after initScene. Keep this guard so
+    // quality detection cannot crash the editor if startup order changes.
     if (!renderer) return;
-    const ratios = { performance: 1, balanced: Math.min(window.devicePixelRatio || 1, 1.25), high: Math.min(window.devicePixelRatio || 1, 2) };
-    const ratio = ratios[profile.performance];
-    renderer.userData.targetPixelRatio = ratio;
+
+    const ratios = {
+        performance: 1,
+        balanced: Math.min(window.devicePixelRatio || 1, 1.25),
+        high: Math.min(window.devicePixelRatio || 1, 2)
+    };
+    const ratio = ratios[profile.performance] ?? 1;
+    renderer.targetPixelRatio = ratio;
     renderer.setPixelRatio(ratio);
     renderer.domElement.style.imageRendering = "auto";
 
     if (profile.performance === "performance") {
         renderer.shadowMap.enabled = false;
     } else if (profile.performance === "balanced") {
+        renderer.shadowMap.enabled = true;
+    } else {
         renderer.shadowMap.enabled = true;
     }
 }
