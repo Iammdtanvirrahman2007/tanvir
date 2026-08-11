@@ -15,7 +15,8 @@ export let lights;
 
 let resizeObserver = null;
 let animationFrame = 0;
-let lastFrame = performance.now();
+let fpsWindowStart = 0;
+let fpsFrameCount = 0;
 let fps = 0;
 
 export function initScene(editor = null) {
@@ -27,6 +28,7 @@ export function initScene(editor = null) {
 
     camera = createCamera();
     renderer = createRenderer();
+    renderer.userData.targetPixelRatio = Math.min(window.devicePixelRatio || 1, 2);
     app.replaceChildren(renderer.domElement);
 
     controls = createControls(camera, renderer);
@@ -83,8 +85,16 @@ export function resizeRenderer() {
 
     camera.aspect = width / height;
     camera.updateProjectionMatrix();
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+
+    const targetRatio = renderer.userData.targetPixelRatio ?? Math.min(window.devicePixelRatio || 1, 2);
+    renderer.setPixelRatio(targetRatio);
     renderer.setSize(width, height, false);
+}
+
+export function setRenderPixelRatio(ratio) {
+    if (!renderer || !Number.isFinite(ratio) || ratio <= 0) return;
+    renderer.userData.targetPixelRatio = ratio;
+    resizeRenderer();
 }
 
 export function resetCamera() {
@@ -111,16 +121,20 @@ function setupResizeObserver(app) {
 
 function startRenderLoop() {
     cancelAnimationFrame(animationFrame);
+    fpsWindowStart = performance.now();
+    fpsFrameCount = 0;
 
     const animate = now => {
         animationFrame = requestAnimationFrame(animate);
         controls?.update();
         renderer?.render(scene, camera);
 
-        const delta = now - lastFrame;
-        if (delta >= 500) {
-            fps = Math.round(1000 / Math.max(delta / 2, 1));
-            lastFrame = now;
+        fpsFrameCount += 1;
+        const elapsed = now - fpsWindowStart;
+        if (elapsed >= 750) {
+            fps = Math.round((fpsFrameCount * 1000) / elapsed);
+            fpsWindowStart = now;
+            fpsFrameCount = 0;
             window.dispatchEvent(new CustomEvent("editor:frame", { detail: { fps } }));
         }
     };
