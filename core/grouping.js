@@ -1,117 +1,97 @@
 import * as THREE from "three";
-
-// ==========================================
-// Multi Selection Storage
-// ==========================================
+import { pushHistory } from "./history.js";
+import { rebuildHierarchy } from "../ui/hierarchy.js";
 
 let multiSelection = [];
 
-// ==========================================
-// Toggle Multi Select
-// ==========================================
-
 export function toggleMultiSelect(object) {
+    if (!object) return multiSelection;
 
     const index = multiSelection.indexOf(object);
+    if (index === -1) multiSelection.push(object);
+    else multiSelection.splice(index, 1);
 
-    if (index === -1) {
-
-        multiSelection.push(object);
-
-        console.log("Added:", object.name);
-
-    } else {
-
-        multiSelection.splice(index, 1);
-
-        console.log("Removed:", object.name);
-    }
-
-    console.log("Multi Selection:", multiSelection);
-}
-
-// ==========================================
-// Get Multi Selection
-// ==========================================
-
-export function getMultiSelection() {
+    window.dispatchEvent(new CustomEvent("editor:multiselect-change", { detail: multiSelection }));
     return multiSelection;
 }
 
-// ==========================================
-// Clear Multi Selection
-// ==========================================
+export function setMultiSelection(objects = []) {
+    multiSelection = [...new Set(objects.filter(Boolean))];
+    window.dispatchEvent(new CustomEvent("editor:multiselect-change", { detail: multiSelection }));
+    return multiSelection;
+}
+
+export function getMultiSelection() {
+    return [...multiSelection];
+}
 
 export function clearMultiSelection() {
     multiSelection = [];
+    window.dispatchEvent(new CustomEvent("editor:multiselect-change", { detail: multiSelection }));
 }
 
-// ==========================================
-// Group Selected Objects
-// ==========================================
-
 export function groupSelected(scene) {
-
-    if (multiSelection.length < 2) {
-
-        alert("Select at least 2 objects using Ctrl + Click");
-
-        return null;
-    }
+    const selected = multiSelection.filter(object => object?.parent && object.parent !== scene);
+    if (selected.length < 2) return null;
 
     const group = new THREE.Group();
-
-    group.name = "Group " + Date.now();
-
+    group.name = uniqueGroupName(scene);
     group.userData.selectable = true;
+    group.userData.editorObject = true;
 
-    // Scene এ আগে add করো
     scene.add(group);
+    selected.forEach(object => group.attach(object));
+    setMultiSelection([group]);
+    rebuildHierarchy();
 
-    // Selected objects group এর ভিতরে নাও
-    multiSelection.forEach(obj => {
-
-        if (obj.parent) {
-            group.attach(obj);
+    pushHistory({
+        undo() {
+            selected.forEach(object => scene.attach(object));
+            scene.remove(group);
+            setMultiSelection(selected);
+            rebuildHierarchy();
+        },
+        redo() {
+            scene.add(group);
+            selected.forEach(object => group.attach(object));
+            setMultiSelection([group]);
+            rebuildHierarchy();
         }
     });
-
-    // Group নিজেই selected থাকবে
-    multiSelection = [group];
-
-    console.log("Grouped Successfully");
 
     return group;
 }
 
-// ==========================================
-// Ungroup Selected Group
-// ==========================================
-
 export function ungroupSelected(scene, group) {
-
-    if (!group) {
-        alert("No group selected");
-        return;
-    }
-
-    if (group.type !== "Group") {
-        alert("Selected object is not a group");
-        return;
-    }
+    if (!group || !group.isGroup) return [];
 
     const children = [...group.children];
+    const parent = group.parent || scene;
+    children.forEach(child => parent.attach(child));
+    parent.remove(group);
+    setMultiSelection(children);
+    rebuildHierarchy();
 
-    children.forEach(child => {
-
-        scene.attach(child);
-
-        child.userData.selectable = true;
+    pushHistory({
+        undo() {
+            parent.add(group);
+            children.forEach(child => group.attach(child));
+            setMultiSelection([group]);
+            rebuildHierarchy();
+        },
+        redo() {
+            children.forEach(child => parent.attach(child));
+            parent.remove(group);
+            setMultiSelection(children);
+            rebuildHierarchy();
+        }
     });
 
-    scene.remove(group);
+    return children;
+}
 
-    multiSelection = children;
-
-    console.log("Ungrouped Successfully");
+function uniqueGroupName(scene) {
+    let index = 1;
+    while (scene.getObjectByName(`Group ${index}`)) index++;
+    return `Group ${index}`;
 }
