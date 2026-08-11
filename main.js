@@ -14,6 +14,8 @@ import { setupSelection, clearSelection, getSelected } from "./core/selection.js
 import { addObject, getObjects } from "./core/objectManager.js";
 import { addToHierarchy, initHierarchy, rebuildHierarchy } from "./ui/hierarchy.js";
 import { initInspector, updateInspector } from "./ui/inspector.js";
+import { initMaterialLibrary } from "./core/materialLibrary.js";
+import { initMaterialLibraryPanel } from "./ui/materialLibraryPanel.js";
 import { createObject } from "./objects/factory.js";
 import { groupSelected, ungroupSelected } from "./core/grouping.js";
 
@@ -26,6 +28,7 @@ function boot() {
     setupTransform(camera, renderer, scene, controls);
     setupSelection(renderer, camera, scene);
     initInspector();
+    initMaterialLibrary();
     initHierarchy(scene);
     setupDelete(scene);
     setupDuplicate(scene);
@@ -33,15 +36,14 @@ function boot() {
     setupImporter(scene);
     setupExporter(scene);
     setupUpload(scene);
-
     const defaultCube = createDefaultCube();
     addToHierarchy(defaultCube);
     updateInspector(null);
-
     bindUI();
     bindEditorEvents();
     bindKeyboard();
     bindResponsiveLayer();
+    requestAnimationFrame(() => initMaterialLibraryPanel());
     updateObjectCount();
     updateHistoryButtons();
     setStatus("Ready");
@@ -60,22 +62,19 @@ function installAdaptiveStyles() {
             .mobile-sheet { display:flex !important; position:fixed !important; left:0 !important; right:0 !important; bottom:0 !important; top:auto !important; width:100% !important; min-width:0 !important; max-height:min(78vh,680px) !important; height:auto !important; z-index:40 !important; border:1px solid #3a3d45 !important; border-bottom:0 !important; border-radius:15px 15px 0 0 !important; box-shadow:0 -18px 45px rgba(0,0,0,.62) !important; overflow:hidden !important; transform:translateY(105%); transition:transform .2s ease-out; }
             .mobile-sheet.mobile-sheet-open { transform:translateY(0); }
             .mobile-sheet .scene-tree-wrap, .mobile-sheet #inspectorContent { min-height:0; overflow:auto; }
-            .mobile-sheet .panel-header { flex:0 0 auto; }
-            .mobile-sheet .mobile-sheet-handle { flex:0 0 auto; }
-            .mobile-sheet .mobile-sheet-header { flex:0 0 auto; }
-            .mobile-sheet .left-footer { flex:0 0 auto; }
+            .mobile-sheet .panel-header, .mobile-sheet .mobile-sheet-handle, .mobile-sheet .mobile-sheet-header, .mobile-sheet .left-footer { flex:0 0 auto; }
             body.sheet-open #bottomToolbar { pointer-events:none; opacity:.35; }
         }
+        .material-library-list { display:grid; gap:6px; margin-top:8px; }
+        .material-library-item { display:grid; grid-template-columns:1fr auto auto; align-items:center; gap:5px; padding:7px 8px; border:1px solid #30323a; border-radius:5px; background:#17181c; }
+        .material-library-item span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:#c9cbd1; font-size:11px; }
+        .material-library-item .icon-action { min-width:34px; }
         @media (prefers-reduced-motion:reduce) { .mobile-sheet { transition:none !important; } }
     `;
     document.head.appendChild(style);
 }
 
-function getDeviceProfile() {
-    const width = window.innerWidth;
-    const coarse = window.matchMedia?.("(pointer: coarse)").matches ?? false;
-    return { width, coarse, mobile: width <= 760, tablet: width > 760 && width <= 1100, desktop: width > 1100 };
-}
+function getDeviceProfile() { const width = window.innerWidth; const coarse = window.matchMedia?.("(pointer: coarse)").matches ?? false; return { width, coarse, mobile: width <= 760, tablet: width > 760 && width <= 1100, desktop: width > 1100 }; }
 
 function bindUI() {
     document.getElementById("sceneAddBtn")?.addEventListener("click", e => { e.stopPropagation(); toggleAddMenu(e.currentTarget); });
@@ -100,20 +99,11 @@ function bindUI() {
     document.getElementById("mobileInspectorBtn")?.addEventListener("click", () => toggleMobileSheet("inspector"));
     document.getElementById("mobileBackdrop")?.addEventListener("click", closeMobileSheet);
     document.getElementById("viewportGizmo")?.addEventListener("click", event => { const axis = event.target.closest("[data-axis]")?.dataset.axis; if (axis) alignView(axis); });
-    document.addEventListener("pointerdown", event => {
-        const popover = document.getElementById("menuPopover");
-        if (popover && !popover.hidden && !popover.contains(event.target) && !event.target.closest("#sceneAddBtn,#addMenuBtn")) closeMenu();
-    });
+    document.addEventListener("pointerdown", event => { const popover = document.getElementById("menuPopover"); if (popover && !popover.hidden && !popover.contains(event.target) && !event.target.closest("#sceneAddBtn,#addMenuBtn")) closeMenu(); });
 }
 
 function bindEditorEvents() {
-    window.addEventListener("editor:selection-change", event => {
-        const selection = event.detail || [];
-        if (selection.length === 1) setStatus(`Selected ${selection[0].name || selection[0].type}`);
-        else if (selection.length > 1) setStatus(`${selection.length} objects selected`);
-        else setStatus("Ready");
-        updateObjectCount();
-    });
+    window.addEventListener("editor:selection-change", event => { const selection = event.detail || []; if (selection.length === 1) setStatus(`Selected ${selection[0].name || selection[0].type}`); else if (selection.length > 1) setStatus(`${selection.length} objects selected`); else setStatus("Ready"); updateObjectCount(); });
     window.addEventListener("editor:status", event => setStatus(event.detail || "Ready"));
     window.addEventListener("editor:hierarchy-refresh", rebuildHierarchy);
     window.addEventListener("editor:history-change", updateHistoryButtons);
@@ -123,157 +113,24 @@ function bindEditorEvents() {
 }
 
 function bindKeyboard() {
-    window.addEventListener("keydown", event => {
-        const target = event.target;
-        const editing = target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement;
-        if (editing) return;
-        const key = event.key.toLowerCase();
-        const mod = event.ctrlKey || event.metaKey;
-        if (mod && key === "z") { event.preventDefault(); if (event.shiftKey ? redo() : undo()) setStatus(event.shiftKey ? "Redo" : "Undo"); return; }
-        if (mod && key === "y") { event.preventDefault(); if (redo()) setStatus("Redo"); return; }
-        if (key === "w") activateTool("select");
-        if (key === "g") activateTool("translate");
-        if (key === "r") activateTool("rotate");
-        if (key === "s") activateTool("scale");
-        if (key === "f") frameSelected();
-        if (key === "escape") { closeMobileSheet(); closeMenu(); clearSelection(); }
-    });
+    window.addEventListener("keydown", event => { const target = event.target; const editing = target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement; if (editing) return; const key = event.key.toLowerCase(); const mod = event.ctrlKey || event.metaKey; if (mod && key === "z") { event.preventDefault(); if (event.shiftKey ? redo() : undo()) setStatus(event.shiftKey ? "Redo" : "Undo"); return; } if (mod && key === "y") { event.preventDefault(); if (redo()) setStatus("Redo"); return; } if (key === "w") activateTool("select"); if (key === "g") activateTool("translate"); if (key === "r") activateTool("rotate"); if (key === "s") activateTool("scale"); if (key === "f") frameSelected(); if (key === "escape") { closeMobileSheet(); closeMenu(); clearSelection(); } });
 }
 
-function bindResponsiveLayer() {
-    const apply = () => {
-        state.device = getDeviceProfile();
-        document.documentElement.dataset.device = state.device.mobile ? "mobile" : state.device.tablet ? "tablet" : "desktop";
-        document.documentElement.dataset.input = state.device.coarse ? "touch" : "mouse";
-        ["mobileSceneBtn", "mobileInspectorBtn"].forEach(id => { const button = document.getElementById(id); if (button) button.style.setProperty("display", state.device.mobile ? "grid" : "none", "important"); });
-        if (!state.device.mobile) closeMobileSheet();
-    };
-    window.addEventListener("resize", apply, { passive: true });
-    window.addEventListener("orientationchange", () => setTimeout(apply, 80), { passive: true });
-    apply();
-}
-
-function activateTool(mode) {
-    if (mode === "select") { state.transformMode = "select"; syncToolButtons(); setStatus("Select tool"); return; }
-    setTransformMode(mode); state.transformMode = mode; syncToolButtons(); setStatus(`${mode[0].toUpperCase()}${mode.slice(1)} tool`);
-}
-
-function syncToolButtons() {
-    const map = { select: "selectBtn", translate: "moveBtn", rotate: "rotateBtn", scale: "scaleBtn" };
-    Object.values(map).forEach(id => document.getElementById(id)?.classList.remove("active"));
-    document.getElementById(map[state.transformMode])?.classList.add("active");
-}
-
-function add(type) {
-    const object = createObject(type);
-    if (!object) return;
-    addObject(scene, object);
-    addToHierarchy(object);
-    setStatus(`Added ${object.name}`);
-    updateObjectCount();
-}
-
-function toggleAddMenu(anchor) {
-    const popover = document.getElementById("menuPopover");
-    if (!popover) return;
-    if (!popover.hidden) return closeMenu();
-    popover.innerHTML = `<button data-add="cube">Cube <span class="shortcut">Shift+C</span></button><button data-add="sphere">Sphere</button><button data-add="cylinder">Cylinder</button><button data-add="cone">Cone</button><button data-add="plane">Plane</button>`;
-    popover.querySelectorAll("[data-add]").forEach(button => button.addEventListener("click", () => { add(button.dataset.add); closeMenu(); }));
-    const rect = anchor.getBoundingClientRect();
-    popover.style.left = `${Math.min(rect.left, window.innerWidth - 205)}px`;
-    popover.style.top = `${rect.bottom + 4}px`;
-    popover.hidden = false;
-}
-
+function bindResponsiveLayer() { const apply = () => { state.device = getDeviceProfile(); document.documentElement.dataset.device = state.device.mobile ? "mobile" : state.device.tablet ? "tablet" : "desktop"; document.documentElement.dataset.input = state.device.coarse ? "touch" : "mouse"; ["mobileSceneBtn", "mobileInspectorBtn"].forEach(id => { const button = document.getElementById(id); if (button) button.style.setProperty("display", state.device.mobile ? "grid" : "none", "important"); }); if (!state.device.mobile) closeMobileSheet(); }; window.addEventListener("resize", apply, { passive: true }); window.addEventListener("orientationchange", () => setTimeout(apply, 80)); apply(); }
+function activateTool(mode) { if (mode === "select") { state.transformMode = "select"; syncToolButtons(); setStatus("Select tool"); return; } setTransformMode(mode); state.transformMode = mode; syncToolButtons(); setStatus(`${mode[0].toUpperCase()}${mode.slice(1)} tool`); }
+function syncToolButtons() { const map = { select: "selectBtn", translate: "moveBtn", rotate: "rotateBtn", scale: "scaleBtn" }; Object.values(map).forEach(id => document.getElementById(id)?.classList.remove("active")); document.getElementById(map[state.transformMode])?.classList.add("active"); }
+function add(type) { const object = createObject(type); if (!object) return; addObject(scene, object); addToHierarchy(object); setStatus(`Added ${object.name}`); updateObjectCount(); }
+function toggleAddMenu(anchor) { const popover = document.getElementById("menuPopover"); if (!popover) return; if (!popover.hidden) return closeMenu(); popover.innerHTML = `<button data-add="cube">Cube <span class="shortcut">Shift+C</span></button><button data-add="sphere">Sphere</button><button data-add="cylinder">Cylinder</button><button data-add="cone">Cone</button><button data-add="plane">Plane</button>`; popover.querySelectorAll("[data-add]").forEach(button => button.addEventListener("click", () => { add(button.dataset.add); closeMenu(); })); const rect = anchor.getBoundingClientRect(); popover.style.left = `${Math.min(rect.left, window.innerWidth - 205)}px`; popover.style.top = `${rect.bottom + 4}px`; popover.hidden = false; }
 function closeMenu() { const popover = document.getElementById("menuPopover"); if (popover) popover.hidden = true; }
-
-function frameSelected() {
-    const object = getSelected();
-    if (!object) return setStatus("Nothing selected");
-    const box = new THREE.Box3().setFromObject(object);
-    const sphere = box.getBoundingSphere(new THREE.Sphere());
-    const distance = Math.max(sphere.radius * 3, 2);
-    const direction = camera.position.clone().sub(controls.target).normalize();
-    camera.position.copy(sphere.center).add(direction.multiplyScalar(distance));
-    controls.target.copy(sphere.center);
-    controls.update();
-    setStatus(`Framed ${object.name || object.type}`);
-}
-
-function alignView(axis) {
-    const target = getSelected();
-    const center = target ? new THREE.Box3().setFromObject(target).getCenter(new THREE.Vector3()) : controls.target.clone();
-    const distance = target ? Math.max(new THREE.Box3().setFromObject(target).getBoundingSphere(new THREE.Sphere()).radius * 3, 3) : 6;
-    const positions = { x: new THREE.Vector3(distance, 0, 0), y: new THREE.Vector3(0, distance, 0), z: new THREE.Vector3(0, 0, distance) };
-    camera.position.copy(center).add(positions[axis]);
-    controls.target.copy(center);
-    controls.update();
-    setStatus(`${axis.toUpperCase()} axis view`);
-}
-
-function toggleMobileSheet(type) {
-    if (!state.device.mobile) return;
-    if (state.mobileSheet === type) return closeMobileSheet();
-    closeMobileSheet();
-    state.mobileSheet = type;
-    const panel = type === "scene" ? document.getElementById("leftPanel") : document.getElementById("rightPanel");
-    const backdrop = document.getElementById("mobileBackdrop");
-    if (!panel || !backdrop) return;
-    ensureSheetHeader(panel, type);
-    panel.classList.add("mobile-sheet");
-    panel.classList.add("mobile-sheet-open");
-    panel.setAttribute("aria-modal", "true");
-    panel.setAttribute("role", "dialog");
-    panel.style.setProperty("display", "flex", "important");
-    backdrop.hidden = false;
-    document.body.classList.add("sheet-open");
-}
-
-function ensureSheetHeader(panel, type) {
-    if (panel.querySelector(".mobile-sheet-header")) return;
-    const header = document.createElement("div");
-    header.className = "mobile-sheet-header";
-    header.innerHTML = `<div><span class="eyebrow">Mobile workspace</span><strong>${type === "scene" ? "Scene" : "Inspector"}</strong></div><button class="mobile-sheet-close" aria-label="Close panel">×</button>`;
-    const handle = document.createElement("div");
-    handle.className = "mobile-sheet-handle";
-    header.querySelector(".mobile-sheet-close").addEventListener("click", closeMobileSheet);
-    panel.prepend(header);
-    panel.prepend(handle);
-}
-
-function closeMobileSheet() {
-    const panels = [document.getElementById("leftPanel"), document.getElementById("rightPanel")];
-    panels.forEach(panel => { if (!panel) return; panel.classList.remove("mobile-sheet", "mobile-sheet-open"); panel.style.removeProperty("display"); });
-    const backdrop = document.getElementById("mobileBackdrop");
-    if (backdrop) backdrop.hidden = true;
-    document.body.classList.remove("sheet-open");
-    state.mobileSheet = null;
-}
-
+function frameSelected() { const object = getSelected(); if (!object) return setStatus("Nothing selected"); const box = new THREE.Box3().setFromObject(object); const sphere = box.getBoundingSphere(new THREE.Sphere()); const distance = Math.max(sphere.radius * 3, 2); const direction = camera.position.clone().sub(controls.target).normalize(); camera.position.copy(sphere.center).add(direction.multiplyScalar(distance)); controls.target.copy(sphere.center); controls.update(); setStatus(`Framed ${object.name || object.type}`); }
+function alignView(axis) { const target = getSelected(); const center = target ? new THREE.Box3().setFromObject(target).getCenter(new THREE.Vector3()) : controls.target.clone(); const distance = target ? Math.max(new THREE.Box3().setFromObject(target).getBoundingSphere(new THREE.Sphere()).radius * 3, 3) : 6; const positions = { x: new THREE.Vector3(distance, 0, 0), y: new THREE.Vector3(0, distance, 0), z: new THREE.Vector3(0, 0, distance) }; camera.position.copy(center).add(positions[axis]); controls.target.copy(center); controls.update(); setStatus(`${axis.toUpperCase()} axis view`); }
+function toggleMobileSheet(type) { if (!state.device.mobile) return; if (state.mobileSheet === type) return closeMobileSheet(); closeMobileSheet(); state.mobileSheet = type; const panel = type === "scene" ? document.getElementById("leftPanel") : document.getElementById("rightPanel"); const backdrop = document.getElementById("mobileBackdrop"); if (!panel || !backdrop) return; ensureSheetHeader(panel, type); panel.classList.add("mobile-sheet", "mobile-sheet-open"); panel.setAttribute("aria-modal", "true"); panel.setAttribute("role", "dialog"); panel.style.setProperty("display", "flex", "important"); backdrop.hidden = false; document.body.classList.add("sheet-open"); }
+function ensureSheetHeader(panel, type) { if (panel.querySelector(".mobile-sheet-header")) return; const header = document.createElement("div"); header.className = "mobile-sheet-header"; header.innerHTML = `<div><span class="eyebrow">Mobile workspace</span><strong>${type === "scene" ? "Scene" : "Inspector"}</strong></div><button class="mobile-sheet-close" aria-label="Close panel">×</button>`; const handle = document.createElement("div"); handle.className = "mobile-sheet-handle"; header.querySelector(".mobile-sheet-close").addEventListener("click", closeMobileSheet); panel.prepend(header); panel.prepend(handle); }
+function closeMobileSheet() { [document.getElementById("leftPanel"), document.getElementById("rightPanel")].forEach(panel => { if (!panel) return; panel.classList.remove("mobile-sheet", "mobile-sheet-open"); panel.style.removeProperty("display"); }); const backdrop = document.getElementById("mobileBackdrop"); if (backdrop) backdrop.hidden = true; document.body.classList.remove("sheet-open"); state.mobileSheet = null; }
 function updateObjectCount() { const count = document.getElementById("objectCount"); if (count) count.textContent = getObjects().length; }
-
-function updateHistoryButtons() {
-    const undoButton = document.getElementById("undoBtn");
-    const redoButton = document.getElementById("redoBtn");
-    if (undoButton) undoButton.disabled = !canUndo();
-    if (redoButton) redoButton.disabled = !canRedo();
-}
-
-function setStatus(message) {
-    state.lastStatus = message;
-    const text = document.getElementById("statusText");
-    if (text) text.textContent = message;
-}
-
+function updateHistoryButtons() { const undoButton = document.getElementById("undoBtn"), redoButton = document.getElementById("redoBtn"); if (undoButton) undoButton.disabled = !canUndo(); if (redoButton) redoButton.disabled = !canRedo(); }
+function setStatus(message) { state.lastStatus = message; const text = document.getElementById("statusText"); if (text) text.textContent = message; }
 let longPressTimer = 0;
-document.addEventListener("pointerdown", event => {
-    if (!state.device?.coarse || !event.target.closest("#viewport")) return;
-    clearTimeout(longPressTimer);
-    longPressTimer = window.setTimeout(() => {
-        if (isDraggingTransform()) return;
-        const selected = getSelected();
-        if (selected) setStatus(`Selected ${selected.name || selected.type} · use toolbar for actions`);
-    }, 550);
-}, { passive: true });
+document.addEventListener("pointerdown", event => { if (!state.device?.coarse || !event.target.closest("#viewport")) return; clearTimeout(longPressTimer); longPressTimer = window.setTimeout(() => { if (isDraggingTransform()) return; const selected = getSelected(); if (selected) window.dispatchEvent(new CustomEvent("editor:long-press", { detail: selected })); }, 600); }, { passive: true });
 document.addEventListener("pointerup", () => clearTimeout(longPressTimer), { passive: true });
 document.addEventListener("pointercancel", () => clearTimeout(longPressTimer), { passive: true });
