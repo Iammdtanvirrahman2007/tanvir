@@ -21,6 +21,7 @@ const state = { transformMode: "translate", lastStatus: "Ready", mobileSheet: nu
 boot();
 
 function boot() {
+    installAdaptiveStyles();
     initScene();
     setupTransform(camera, renderer, scene, controls);
     setupSelection(renderer, camera, scene);
@@ -46,16 +47,34 @@ function boot() {
     setStatus("Ready");
 }
 
+function installAdaptiveStyles() {
+    if (document.getElementById("modelForgeAdaptiveStyles")) return;
+    const style = document.createElement("style");
+    style.id = "modelForgeAdaptiveStyles";
+    style.textContent = `
+        .mobile-panel-btn { display:none !important; }
+        #mobileBackdrop { position:fixed; inset:0; z-index:35; background:rgba(0,0,0,.58); backdrop-filter:blur(2px); }
+        #mobileBackdrop[hidden] { display:none !important; }
+        @media (max-width:760px) {
+            .mobile-panel-btn { display:grid !important; }
+            .mobile-sheet { display:flex !important; position:fixed !important; left:0 !important; right:0 !important; bottom:0 !important; top:auto !important; width:100% !important; min-width:0 !important; max-height:min(78vh,680px) !important; height:auto !important; z-index:40 !important; border:1px solid #3a3d45 !important; border-bottom:0 !important; border-radius:15px 15px 0 0 !important; box-shadow:0 -18px 45px rgba(0,0,0,.62) !important; overflow:hidden !important; transform:translateY(105%); transition:transform .2s ease-out; }
+            .mobile-sheet.mobile-sheet-open { transform:translateY(0); }
+            .mobile-sheet .scene-tree-wrap, .mobile-sheet #inspectorContent { min-height:0; overflow:auto; }
+            .mobile-sheet .panel-header { flex:0 0 auto; }
+            .mobile-sheet .mobile-sheet-handle { flex:0 0 auto; }
+            .mobile-sheet .mobile-sheet-header { flex:0 0 auto; }
+            .mobile-sheet .left-footer { flex:0 0 auto; }
+            body.sheet-open #bottomToolbar { pointer-events:none; opacity:.35; }
+        }
+        @media (prefers-reduced-motion:reduce) { .mobile-sheet { transition:none !important; } }
+    `;
+    document.head.appendChild(style);
+}
+
 function getDeviceProfile() {
     const width = window.innerWidth;
     const coarse = window.matchMedia?.("(pointer: coarse)").matches ?? false;
-    return {
-        width,
-        coarse,
-        mobile: width <= 760,
-        tablet: width > 760 && width <= 1100,
-        desktop: width > 1100
-    };
+    return { width, coarse, mobile: width <= 760, tablet: width > 760 && width <= 1100, desktop: width > 1100 };
 }
 
 function bindUI() {
@@ -126,6 +145,7 @@ function bindResponsiveLayer() {
         state.device = getDeviceProfile();
         document.documentElement.dataset.device = state.device.mobile ? "mobile" : state.device.tablet ? "tablet" : "desktop";
         document.documentElement.dataset.input = state.device.coarse ? "touch" : "mouse";
+        ["mobileSceneBtn", "mobileInspectorBtn"].forEach(id => { const button = document.getElementById(id); if (button) button.style.setProperty("display", state.device.mobile ? "grid" : "none", "important"); });
         if (!state.device.mobile) closeMobileSheet();
     };
     window.addEventListener("resize", apply, { passive: true });
@@ -192,22 +212,21 @@ function alignView(axis) {
 }
 
 function toggleMobileSheet(type) {
-    if (!state.device.mobile) {
-        if (type === "scene") document.getElementById("leftPanel")?.scrollIntoView({ behavior: "smooth" });
-        return;
-    }
+    if (!state.device.mobile) return;
     if (state.mobileSheet === type) return closeMobileSheet();
+    closeMobileSheet();
     state.mobileSheet = type;
     const panel = type === "scene" ? document.getElementById("leftPanel") : document.getElementById("rightPanel");
     const backdrop = document.getElementById("mobileBackdrop");
     if (!panel || !backdrop) return;
+    ensureSheetHeader(panel, type);
     panel.classList.add("mobile-sheet");
     panel.classList.add("mobile-sheet-open");
     panel.setAttribute("aria-modal", "true");
     panel.setAttribute("role", "dialog");
+    panel.style.setProperty("display", "flex", "important");
     backdrop.hidden = false;
     document.body.classList.add("sheet-open");
-    ensureSheetHeader(panel, type);
 }
 
 function ensureSheetHeader(panel, type) {
@@ -224,7 +243,7 @@ function ensureSheetHeader(panel, type) {
 
 function closeMobileSheet() {
     const panels = [document.getElementById("leftPanel"), document.getElementById("rightPanel")];
-    panels.forEach(panel => panel?.classList.remove("mobile-sheet", "mobile-sheet-open"));
+    panels.forEach(panel => { if (!panel) return; panel.classList.remove("mobile-sheet", "mobile-sheet-open"); panel.style.removeProperty("display"); });
     const backdrop = document.getElementById("mobileBackdrop");
     if (backdrop) backdrop.hidden = true;
     document.body.classList.remove("sheet-open");
@@ -246,7 +265,6 @@ function setStatus(message) {
     if (text) text.textContent = message;
 }
 
-// Prevent accidental browser long-press selection/drag behavior in the editor.
 let longPressTimer = 0;
 document.addEventListener("pointerdown", event => {
     if (!state.device?.coarse || !event.target.closest("#viewport")) return;
