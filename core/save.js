@@ -1,3 +1,4 @@
+import * as THREE from "three";
 import { getObjects } from "./objectManager.js";
 
 const FORMATS = {
@@ -51,19 +52,19 @@ function downloadBlob(content, filename, mime) {
 }
 
 function exportOBJ(scene, filename = "modelforge-model.obj") {
-    const vertices = [], faces = [], root = scene;
-    root.updateMatrixWorld(true);
-    root.traverse(object => {
+    const vertices = [], faces = [];
+    scene.updateMatrixWorld(true);
+    scene.traverse(object => {
         if (!object.isMesh || !object.userData?.editorObject || object.userData?.editorOnly) return;
         const position = object.geometry?.attributes?.position; if (!position) return;
-        const offset = vertices.length / 3;
-        const vector = new THREE.Vector3();
+        const offset = vertices.length / 3; const vector = new THREE.Vector3();
         for (let i = 0; i < position.count; i++) { vector.fromBufferAttribute(position, i).applyMatrix4(object.matrixWorld); vertices.push(vector.x, vector.y, vector.z); }
         const index = object.geometry.index;
         if (index) for (let i = 0; i < index.count; i += 3) faces.push(`f ${index.getX(i)+1+offset} ${index.getX(i+1)+1+offset} ${index.getX(i+2)+1+offset}`);
         else for (let i = 0; i < position.count; i += 3) faces.push(`f ${i+1+offset} ${i+2+offset} ${i+3+offset}`);
     });
-    return downloadBlob(`# ModelForge\n${Array.from({length: vertices.length / 3}, (_, i) => `v ${vertices[i*3]} ${vertices[i*3+1]} ${vertices[i*3+2]}`).join("\n")}\n${faces.join("\n")}\n`, filename, "text/plain");
+    const lines = ["# ModelForge", ...Array.from({ length: vertices.length / 3 }, (_, i) => `v ${vertices[i*3]} ${vertices[i*3+1]} ${vertices[i*3+2]}`), ...faces];
+    return downloadBlob(`${lines.join("\n")}\n`, filename, "text/plain");
 }
 
 async function exportGLTF(scene, format, filename) {
@@ -74,7 +75,7 @@ async function exportGLTF(scene, format, filename) {
             const binary = format === "glb";
             const data = binary ? result : JSON.stringify(result, null, 2);
             downloadBlob(data, filename || `modelforge-model.${format}`, binary ? "model/gltf-binary" : "model/gltf+json");
-        }, error => console.error("glTF export failed", error), { binary });
+        }, error => console.error("glTF export failed", error), { binary: format === "glb" });
         return true;
     } catch (error) { console.error("glTF exporter unavailable", error); return false; }
 }
@@ -83,4 +84,4 @@ function serializeObject(object) {
     const materials = object.material ? (Array.isArray(object.material) ? object.material : [object.material]).map(serializeMaterial) : [];
     return { kind: object.isGroup ? "Group" : "Mesh", type: object.geometry?.type || object.type, name: object.name || object.type, visible: object.visible, position: object.position.toArray(), rotation: [object.rotation.x, object.rotation.y, object.rotation.z], scale: object.scale.toArray(), materials, userData: { partType: object.userData?.partType || "", category: object.userData?.category || "", manufacturer: object.userData?.manufacturer || "", mass: object.userData?.mass ?? 1, description: object.userData?.description || "", version: object.userData?.version || "1.0" }, children: object.children.filter(child => child.userData?.editorObject && !child.userData?.editorOnly).map(serializeObject) };
 }
-function serializeMaterial(material) { return { name: material.name || "", color: material.color?.getHex() ?? 0xffffff, metalness: material.metalness ?? 0, roughness: material.roughness ?? 1, opacity: material.opacity ?? 1, transparent: material.transparent ?? false, wireframe: material.wireframe ?? false, side: material.side ?? 0 }; }
+function serializeMaterial(material) { return { name: material.name || "", color: material.color?.getHex() ?? 0xffffff, metalness: material.metalness ?? 0, roughness: material.roughness ?? 1, opacity: material.opacity ?? 1, transparent: material.transparent ?? false, side: material.side ?? 0 }; }
