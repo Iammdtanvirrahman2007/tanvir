@@ -2,38 +2,53 @@ import * as THREE from "three";
 import { addObject, clearObjects } from "./objectManager.js";
 import { rebuildHierarchy } from "../ui/hierarchy.js";
 
-export function loadScene(scene) {
+export function loadScene(scene, options = {}) {
     const input = document.createElement("input");
     input.type = "file";
-    input.accept = ".json";
+    input.accept = options.rkpOnly ? ".rkp" : ".rkp,.json,application/json";
     input.addEventListener("change", event => {
         const file = event.target.files?.[0];
         if (!file) return;
-        const reader = new FileReader();
-        reader.onload = () => {
-            try {
-                const parsed = JSON.parse(reader.result);
-                const roots = Array.isArray(parsed) ? parsed : parsed.objects;
-                if (!Array.isArray(roots)) throw new Error("Invalid ModelForge scene.");
-                clearObjects(scene);
-                roots.forEach(data => restoreObject(scene, scene, data));
-                rebuildHierarchy();
-                window.dispatchEvent(new CustomEvent("editor:status", { detail: `Loaded ${roots.length} objects` }));
-            } catch (error) {
-                console.error("Load failed:", error);
-                window.dispatchEvent(new CustomEvent("editor:status", { detail: "Invalid scene file" }));
-            }
-        };
-        reader.readAsText(file);
+        openProjectFile(scene, file);
         input.value = "";
     }, { once: true });
     input.click();
 }
 
+export function openProjectFile(scene, file) {
+    if (!file) return Promise.resolve(false);
+    return new Promise(resolve => {
+        const reader = new FileReader();
+        reader.onload = () => {
+            try {
+                const parsed = JSON.parse(reader.result);
+                const roots = Array.isArray(parsed) ? parsed : parsed.objects;
+                if (!Array.isArray(roots)) throw new Error("Invalid ModelForge project.");
+                clearObjects(scene);
+                roots.forEach(data => restoreObject(scene, scene, data));
+                rebuildHierarchy();
+                window.dispatchEvent(new CustomEvent("editor:project-opened", {
+                    detail: { fileName: file.name, format: parsed.format || "ModelForgeScene", version: parsed.version || 1, objectCount: roots.length }
+                }));
+                window.dispatchEvent(new CustomEvent("editor:status", { detail: `Opened ${file.name}` }));
+                resolve(true);
+            } catch (error) {
+                console.error("Project open failed:", error);
+                window.dispatchEvent(new CustomEvent("editor:status", { detail: "Invalid RKP/scene file" }));
+                resolve(false);
+            }
+        };
+        reader.onerror = () => {
+            window.dispatchEvent(new CustomEvent("editor:status", { detail: "Could not read project file" }));
+            resolve(false);
+        };
+        reader.readAsText(file);
+    });
+}
+
 function restoreObject(scene, parent, data) {
     if (!data) return null;
     let object;
-
     if (data.kind === "Group" || data.type === "Group") {
         object = new THREE.Group();
         object.userData.selectable = true;
@@ -47,18 +62,13 @@ function restoreObject(scene, parent, data) {
         object.receiveShadow = true;
         object.userData.selectable = true;
     }
-
     object.name = data.name || "Object";
     object.visible = data.visible ?? true;
-    const position = normalizeVector(data.position, [0, 0, 0]);
-    const rotation = normalizeVector(data.rotation, [0, 0, 0]);
-    const scale = normalizeVector(data.scale, [1, 1, 1]);
-    object.position.fromArray(position);
-    object.rotation.set(...rotation);
-    object.scale.fromArray(scale);
+    object.position.fromArray(normalizeVector(data.position, [0, 0, 0]));
+    object.rotation.set(...normalizeVector(data.rotation, [0, 0, 0]));
+    object.scale.fromArray(normalizeVector(data.scale, [1, 1, 1]));
     object.userData.editorObject = true;
     Object.assign(object.userData, data.userData || {});
-
     parent.add(object);
     addObject(scene, object);
     (data.children || []).forEach(child => restoreObject(scene, object, child));
