@@ -1,128 +1,94 @@
-import { selectObject, clearSelection } from "../core/selection.js";
+import { selectObject } from "../core/selection.js";
 import { updateInspector } from "./inspector.js";
 
 let activeUuid = null;
 let filterText = "";
 let sceneRoot = null;
 
-const TYPE_ICONS = {
-    Group: "▣",
-    Mesh: "◇",
-    default: "◇"
-};
+const TYPE_ICONS = { Group: "▣", Mesh: "◇", default: "◇" };
 
 export function initHierarchy(scene) {
     sceneRoot = scene;
-
-    const search = document.getElementById("sceneSearch");
-    if (search) {
-        search.addEventListener("input", event => {
-            filterText = event.target.value.trim().toLowerCase();
-            rebuildHierarchy();
-        });
-    }
-
+    document.getElementById("sceneSearch")?.addEventListener("input", event => {
+        filterText = event.target.value.trim().toLowerCase();
+        rebuildHierarchy();
+    });
     rebuildHierarchy();
 }
 
-export function addToHierarchy() {
-    rebuildHierarchy();
-}
-
-export function removeFromHierarchy() {
-    rebuildHierarchy();
-}
-
+export function addToHierarchy() { rebuildHierarchy(); }
+export function removeFromHierarchy() { rebuildHierarchy(); }
 export function rebuildHierarchy() {
     const tree = document.getElementById("sceneTree");
     if (!tree || !sceneRoot) return;
-
     tree.replaceChildren();
-
-    const roots = sceneRoot.children.filter(isVisibleEditorObject);
-    roots.forEach(object => {
+    sceneRoot.children.filter(isEditorObject).forEach(object => {
         const item = createTreeItem(object, 0);
         if (item) tree.appendChild(item);
     });
-
     if (!tree.children.length) {
         const empty = document.createElement("li");
         empty.className = "tree-empty";
+        empty.style.cssText = "padding:18px 10px;color:#626671;font-size:11px;text-align:center";
         empty.textContent = filterText ? "No matching objects" : "Scene is empty";
         tree.appendChild(empty);
     }
 }
 
 function createTreeItem(object, depth) {
-    if (!matchesFilter(object)) {
-        const matchingChild = object.children.some(child => isVisibleEditorObject(child) && matchesTreeBranch(child));
-        if (!matchingChild) return null;
-    }
+    const children = object.children.filter(isEditorObject);
+    if (!matchesFilter(object) && !children.some(matchesTreeBranch)) return null;
 
     const item = document.createElement("li");
     item.dataset.uuid = object.uuid;
-
     const row = document.createElement("div");
     row.className = `tree-row${object.uuid === activeUuid ? " active" : ""}`;
+    row.dataset.uuid = object.uuid;
     row.style.paddingLeft = `${6 + depth * 12}px`;
-    row.title = object.name || object.type;
-
-    const children = object.children.filter(isVisibleEditorObject);
-    const hasChildren = children.length > 0;
 
     const arrow = document.createElement("span");
     arrow.className = "tree-arrow";
-    arrow.textContent = hasChildren ? "▸" : "";
-
     const icon = document.createElement("span");
     icon.className = "tree-icon";
     icon.textContent = TYPE_ICONS[object.type] || TYPE_ICONS.default;
-
-    const name = document.createElement("span");
-    name.className = "tree-name";
-    name.textContent = object.name || object.type;
-
+    const label = document.createElement("span");
+    label.className = "tree-name";
+    label.textContent = object.name || object.type;
     const kind = document.createElement("span");
     kind.className = "tree-kind";
     kind.textContent = object.isGroup ? "GROUP" : "";
-
-    row.append(arrow, icon, name, kind);
+    row.append(arrow, icon, label, kind);
     item.appendChild(row);
 
     let childList = null;
-    let expanded = object.userData.hierarchyExpanded === true;
-
-    if (hasChildren) {
+    const expanded = object.userData.hierarchyExpanded !== false;
+    if (children.length) {
+        arrow.textContent = expanded ? "▾" : "▸";
         childList = document.createElement("ul");
         childList.className = `tree-children${expanded ? " open" : ""}`;
-
         children.forEach(child => {
             const childItem = createTreeItem(child, depth + 1);
             if (childItem) childList.appendChild(childItem);
         });
-
         if (childList.children.length) item.appendChild(childList);
-        arrow.textContent = expanded ? "▾" : "▸";
     }
 
     row.addEventListener("click", event => {
         event.stopPropagation();
-        if (event.ctrlKey || event.metaKey) {
-            selectObject(object, { toggle: true });
-        } else {
-            selectObject(object);
-        }
+        selectObject(object, { toggle: event.ctrlKey || event.metaKey });
     });
 
-    arrow.addEventListener("click", event => {
-        event.stopPropagation();
-        object.userData.hierarchyExpanded = !expanded;
-        rebuildHierarchy();
-    });
+    if (children.length) {
+        arrow.addEventListener("click", event => {
+            event.stopPropagation();
+            object.userData.hierarchyExpanded = !expanded;
+            rebuildHierarchy();
+        });
+    }
 
     row.addEventListener("dblclick", event => {
         event.stopPropagation();
-        beginRename(name, object);
+        beginRename(label, object);
     });
 
     row.addEventListener("contextmenu", event => {
@@ -140,31 +106,27 @@ function beginRename(label, object) {
     label.replaceWith(input);
     input.focus();
     input.select();
-
+    let cancelled = false;
     const finish = () => {
-        const nextName = input.value.trim();
-        if (nextName) object.name = nextName;
+        if (cancelled) return;
+        const next = input.value.trim();
+        if (next) object.name = next;
         input.replaceWith(label);
         label.textContent = object.name || object.type;
         updateInspector(object);
         rebuildHierarchy();
         window.dispatchEvent(new CustomEvent("editor:status", { detail: `Renamed to ${object.name}` }));
     };
-
     input.addEventListener("blur", finish, { once: true });
     input.addEventListener("keydown", event => {
         if (event.key === "Enter") input.blur();
-        if (event.key === "Escape") {
-            input.removeEventListener("blur", finish);
-            input.replaceWith(label);
-        }
+        if (event.key === "Escape") { cancelled = true; input.replaceWith(label); }
     });
 }
 
 export function setActiveHierarchy(object) {
     activeUuid = object?.uuid || null;
     document.querySelectorAll(".tree-row.active").forEach(row => row.classList.remove("active"));
-
     if (!activeUuid) return;
     const row = document.querySelector(`.tree-row[data-uuid="${activeUuid}"]`);
     if (row) {
@@ -178,16 +140,8 @@ export function clearHierarchySelection() {
     document.querySelectorAll(".tree-row.active").forEach(row => row.classList.remove("active"));
 }
 
-function isVisibleEditorObject(object) {
-    if (!object || object.userData?.editorOnly) return false;
-    return object.isMesh || object.isGroup || object.userData?.selectable === true;
+function isEditorObject(object) {
+    return !!object && !object.userData?.editorOnly && (object.isMesh || object.isGroup || object.userData?.selectable === true);
 }
-
-function matchesFilter(object) {
-    if (!filterText) return true;
-    return `${object.name || ""} ${object.type || ""}`.toLowerCase().includes(filterText);
-}
-
-function matchesTreeBranch(object) {
-    return matchesFilter(object) || object.children.some(child => isVisibleEditorObject(child) && matchesTreeBranch(child));
-}
+function matchesFilter(object) { return !filterText || `${object.name || ""} ${object.type || ""}`.toLowerCase().includes(filterText); }
+function matchesTreeBranch(object) { return matchesFilter(object) || object.children.some(child => isEditorObject(child) && matchesTreeBranch(child)); }
