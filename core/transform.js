@@ -18,21 +18,27 @@ export function setupTransform(camera, renderer, scene, orbitControls) {
 
     transform.addEventListener("dragging-changed", event => {
         if (orbitControls) orbitControls.enabled = !event.value;
-        const object = transform.object;
+        const object = pivotState?.object || transform.object;
         if (!object) return;
+
         if (event.value) {
-            startState = capture(object);
+            object.updateMatrixWorld(true);
+            startState = captureWorld(object);
             return;
         }
-        const endState = capture(object);
+
+        object.updateMatrixWorld(true);
+        const endState = captureWorld(object);
         if (!startState || statesEqual(startState, endState)) {
             startState = null;
             return;
         }
+
+        const historyObject = object;
         pushHistory({
             label: `${transform.mode} transform`,
-            undo: () => { restore(object, startState); refreshInspector(); },
-            redo: () => { restore(object, endState); refreshInspector(); }
+            undo: () => { restoreWorld(historyObject, startState); refreshInspector(); },
+            redo: () => { restoreWorld(historyObject, endState); refreshInspector(); }
         });
         startState = null;
         refreshInspector();
@@ -51,49 +57,88 @@ export function attachTransform(object) {
 }
 
 /**
- * Attach a selected group to an invisible pivot at a world-space point.
- * The pivot is editor-only, so it never appears in the hierarchy or gets saved.
- * Moving/rotating/scaling the TransformControls now acts around this point.
+ * Attach a group/object to an invisible pivot at a world-space point.
+ * The object's world transform is preserved when the pivot is created and
+ * when the pivot is removed, so changing the pivot never makes the model jump.
  */
 export function attachTransformPivot(object, worldPoint) {
-    if (!transform || !object || !worldPoint) return false;
+    if (!transform || !object || !worldPoint || object === transform.getHelper()) return false;
     if (!object.parent) return false;
 
     clearPivot();
     object.updateMatrixWorld(true);
+
     const parent = object.parent;
     const pivot = new THREE.Group();
     pivot.name = "__editorTransformPivot";
-    pivot.userData = { editorOnly: true, editorTransformPivot: true };
+    pivot.userData = {
+        editorOnly: true,
+        editorTransformPivot: true,
+        pivotTarget: object.uuid,
+        pivotPoint: { x: worldPoint.x, y: worldPoint.y, z: worldPoint.z }
+    };
 
     parent.add(pivot);
     pivot.position.copy(parent.worldToLocal(worldPoint.clone()));
+    pivot.quaternion.identity();
+    pivot.scale.set(1, 1, 1);
     pivot.updateMatrixWorld(true);
-    pivot.attach(object);
 
-    pivotState = { pivot, object, parent };
+    // THREE.Object3D.attach preserves the object's world transform.
+    pivot.attach(object);
+    pivot.updateMatrixWorld(true);
+
+    pivotState = {
+        pivot,
+        object,
+        parent,
+        worldPoint: worldPoint.clone()
+    };
+
     transform.attach(pivot);
     refreshInspector();
     window.dispatchEvent(new CustomEvent("editor:transform-pivot-change", {
-        detail: { object, point: worldPoint.clone(), active: true }
+        detail: {
+            object,
+            point: worldPoint.clone(),
+            active: true,
+            pivot
+        }
     }));
     return true;
 }
 
 export function clearPivot() {
     if (!pivotState) return;
+
     const { pivot, object, parent } = pivotState;
+    const world = new THREE.Matrix4();
+    object.updateMatrixWorld(true);
+    world.copy(object.matrixWorld);
+
     transform?.detach();
+
+    // Reparent while preserving the exact world transform. This is critical
+    // after a rotate/scale operation around a custom group pivot.
     if (object && parent) {
         parent.attach(object);
+        restoreWorld(object, world);
     }
+
     pivot.parent?.remove(pivot);
     pivotState = null;
-    window.dispatchEvent(new CustomEvent("editor:transform-pivot-change", { detail: { active: false } }));
+    startState = null;
+
+    window.dispatchEvent(new CustomEvent("editor:transform-pivot-change", {
+        detail: { active: false }
+    }));
+    refreshInspector();
 }
 
 export function hasTransformPivot() { return !!pivotState; }
 export function getTransformPivot() { return pivotState?.pivot || null; }
+export function getTransformPivotTarget() { return pivotState?.object || null; }
+export function getTransformPivotPoint() { return pivotState?.worldPoint?.clone() || null; }
 
 export function detachTransform() {
     clearPivot();
@@ -146,23 +191,29 @@ function applySnapSettings() {
     transform.setScaleSnap(snapEnabled ? snapValues.scale : null);
 }
 
-function capture(object) {
-    return {
-        position: object.position.clone(),
-        rotation: object.rotation.clone(),
-        scale: object.scale.clone()
-    };
+function captureWorld(object) {
+    object.updateMatrixWorld(true);
+    return object.matrixWorld.clone();
 }
 
-function restore(object, state) {
-    object.position.copy(state.position);
-    object.rotation.copy(state.rotation);
-    object.scale.copy(state.scale);
+function restoreWorld(object, matrix) {
+    if (!object || !matrix) return;
+    const local = matrix.clone();
+    if (object.parent) {
+        object.parent.updateMatrixWorld(true);
+        local.premultiply(object.parent.matrixWorld.clone().invert());
+    }
+    local.decompose(object.position, object.quaternion, object.scale);
     object.updateMatrixWorld(true);
 }
 
 function statesEqual(a, b) {
-    return a.position.equals(b.position) && a.rotation.equals(b.rotation) && a.scale.equals(b.scale);
+    const ae = a.elements;
+    const be = b.elements;
+    for (let i = 0; i < 16; i++) {
+        if (Math.abs(ae[i] - be[i]) > 1e-7) return false;
+    }
+    return true;
 }
 
 function dispatchModeChange() {
