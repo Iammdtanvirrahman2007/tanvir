@@ -1,77 +1,32 @@
 import * as THREE from "three";
 
-let currentObjects = [];
 let originalEmissives = new Map();
 
-// ==========================================
-// Highlight Selected Object / Group
-// ==========================================
-
 export function highlight(object) {
-
-    // ======================================
-    // Restore previous emissive colors
-    // ======================================
-
-    originalEmissives.forEach((originalColor, material) => {
-
-        if (material && material.emissive) {
-            material.emissive.copy(originalColor);
-        }
-    });
-
-    originalEmissives.clear();
-    currentObjects = [];
-
-    // Nothing selected
+    restoreHighlights();
     if (!object) return;
 
-    // ======================================
-    // Collect meshes
-    // ======================================
-
     const meshes = [];
-
-    if (object.isGroup || object.type === "Group") {
-
-        object.traverse(child => {
-            if (child.isMesh) {
-                meshes.push(child);
-            }
-        });
-
-    } else if (object.isMesh) {
-
-        meshes.push(object);
-    }
-
-    // ======================================
-    // Apply highlight
-    // ======================================
+    if (object.isMesh) meshes.push(object);
+    else if (object.isGroup || object.type === "Group") object.traverse(child => { if (child.isMesh) meshes.push(child); });
 
     meshes.forEach(mesh => {
-
-        const materials = Array.isArray(mesh.material)
-            ? mesh.material
-            : [mesh.material];
-
-        materials.forEach(mat => {
-
-            if (!mat) return;
-
-            // emissive property থাকলে তবেই highlight
-            if ("emissive" in mat && mat.emissive instanceof THREE.Color) {
-
-                // Original color save করো
-                if (!originalEmissives.has(mat)) {
-                    originalEmissives.set(mat, mat.emissive.clone());
-                }
-
-                // Highlight color
-                mat.emissive.setHex(0xffcc00);
-            }
+        const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+        materials.forEach(material => {
+            if (!material || !material.emissive || !(material.emissive instanceof THREE.Color)) return;
+            if (!originalEmissives.has(material)) originalEmissives.set(material, material.emissive.clone());
+            material.emissive.setRGB(0.18, 0.11, 0.025);
+            material.needsUpdate = true;
         });
     });
+}
 
-    currentObjects = meshes;
+export function restoreHighlights() {
+    originalEmissives.forEach((color, material) => {
+        if (material?.emissive) {
+            material.emissive.copy(color);
+            material.needsUpdate = true;
+        }
+    });
+    originalEmissives.clear();
 }
