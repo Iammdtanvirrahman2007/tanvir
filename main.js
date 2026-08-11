@@ -6,7 +6,7 @@ import { setupExporter } from "./core/exporter.js";
 import { setupImporter } from "./core/importer.js";
 import { setupCopyPaste } from "./core/copyPaste.js";
 import { setupDuplicate } from "./core/duplicate.js";
-import { toggleSnap, setupTransform, setTransformMode } from "./core/transform.js";
+import { toggleSnap, setupTransform, setTransformMode, isDraggingTransform } from "./core/transform.js";
 import { undo, redo, canUndo, canRedo } from "./core/history.js";
 import { initScene, scene, renderer, camera, controls, createDefaultCube, grid, resetCamera, getFPS } from "./core/scene.js";
 import { setupDelete } from "./core/delete.js";
@@ -17,20 +17,13 @@ import { initInspector, updateInspector } from "./ui/inspector.js";
 import { createObject } from "./objects/factory.js";
 import { groupSelected, ungroupSelected } from "./core/grouping.js";
 
-const state = { transformMode: "translate", lastStatus: "Ready" };
+const state = { transformMode: "translate", lastStatus: "Ready", mobileSheet: null, device: getDeviceProfile() };
 boot();
 
 function boot() {
     initScene();
-
-    // TransformControls must register before the selection handler.
-    // Otherwise selection receives the pointerdown first, clears the
-    // selected object, and detaches the gizmo when its arrows are dragged
-    // over empty viewport space. This made gizmo dragging appear to require
-    // the object mesh to be underneath the arrow.
     setupTransform(camera, renderer, scene, controls);
     setupSelection(renderer, camera, scene);
-
     initInspector();
     initHierarchy(scene);
     setupDelete(scene);
@@ -47,9 +40,22 @@ function boot() {
     bindUI();
     bindEditorEvents();
     bindKeyboard();
+    bindResponsiveLayer();
     updateObjectCount();
     updateHistoryButtons();
     setStatus("Ready");
+}
+
+function getDeviceProfile() {
+    const width = window.innerWidth;
+    const coarse = window.matchMedia?.("(pointer: coarse)").matches ?? false;
+    return {
+        width,
+        coarse,
+        mobile: width <= 760,
+        tablet: width > 760 && width <= 1100,
+        desktop: width > 1100
+    };
 }
 
 function bindUI() {
@@ -66,21 +72,35 @@ function bindUI() {
     document.getElementById("moveBtn")?.addEventListener("click", () => activateTool("translate"));
     document.getElementById("rotateBtn")?.addEventListener("click", () => activateTool("rotate"));
     document.getElementById("scaleBtn")?.addEventListener("click", () => activateTool("scale"));
-    document.getElementById("snapBtn")?.addEventListener("click", () => { const enabled = toggleSnap(); const button = document.getElementById("snapBtn"); button.textContent = enabled ? "Snap On" : "Snap Off"; button.classList.toggle("snap-on", enabled); });
+    document.getElementById("snapBtn")?.addEventListener("click", () => { const enabled = toggleSnap(); const button = document.getElementById("snapBtn"); if (button) { button.textContent = enabled ? "Snap On" : "Snap Off"; button.classList.toggle("snap-on", enabled); } });
     document.getElementById("groupBtn")?.addEventListener("click", () => { const group = groupSelected(scene); setStatus(group ? `Grouped ${group.name}` : "Select two or more objects with Ctrl-click"); rebuildHierarchy(); });
     document.getElementById("ungroupBtn")?.addEventListener("click", () => { const children = ungroupSelected(scene, getSelected()); setStatus(children.length ? "Group ungrouped" : "Select a group first"); });
     document.getElementById("addCollectionBtn")?.addEventListener("click", () => setStatus("Collections are represented by Groups. Ctrl-click objects, then Group."));
     document.getElementById("sceneOptionsBtn")?.addEventListener("click", () => setStatus(`${getObjects().length} editor objects`));
-    document.addEventListener("pointerdown", event => { const popover = document.getElementById("menuPopover"); if (popover && !popover.hidden && !popover.contains(event.target) && !event.target.closest("#sceneAddBtn,#addMenuBtn")) closeMenu(); });
+    document.getElementById("mobileSceneBtn")?.addEventListener("click", () => toggleMobileSheet("scene"));
+    document.getElementById("mobileInspectorBtn")?.addEventListener("click", () => toggleMobileSheet("inspector"));
+    document.getElementById("mobileBackdrop")?.addEventListener("click", closeMobileSheet);
+    document.getElementById("viewportGizmo")?.addEventListener("click", event => { const axis = event.target.closest("[data-axis]")?.dataset.axis; if (axis) alignView(axis); });
+    document.addEventListener("pointerdown", event => {
+        const popover = document.getElementById("menuPopover");
+        if (popover && !popover.hidden && !popover.contains(event.target) && !event.target.closest("#sceneAddBtn,#addMenuBtn")) closeMenu();
+    });
 }
 
 function bindEditorEvents() {
-    window.addEventListener("editor:selection-change", event => { const selection = event.detail || []; if (selection.length === 1) setStatus(`Selected ${selection[0].name || selection[0].type}`); else if (selection.length > 1) setStatus(`${selection.length} objects selected`); else setStatus("Ready"); updateObjectCount(); });
+    window.addEventListener("editor:selection-change", event => {
+        const selection = event.detail || [];
+        if (selection.length === 1) setStatus(`Selected ${selection[0].name || selection[0].type}`);
+        else if (selection.length > 1) setStatus(`${selection.length} objects selected`);
+        else setStatus("Ready");
+        updateObjectCount();
+    });
     window.addEventListener("editor:status", event => setStatus(event.detail || "Ready"));
     window.addEventListener("editor:hierarchy-refresh", rebuildHierarchy);
     window.addEventListener("editor:history-change", updateHistoryButtons);
     window.addEventListener("editor:frame", event => { const fps = event.detail?.fps ?? getFPS(); const el = document.getElementById("fpsCounter"); if (el) el.textContent = fps; });
     window.addEventListener("editor:transform-mode", event => { state.transformMode = event.detail; syncToolButtons(); });
+    window.addEventListener("editor:snap-change", event => { const button = document.getElementById("snapBtn"); if (button) { button.textContent = event.detail ? "Snap On" : "Snap Off"; button.classList.toggle("snap-on", !!event.detail); } });
 }
 
 function bindKeyboard() {
@@ -89,15 +109,28 @@ function bindKeyboard() {
         const editing = target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement;
         if (editing) return;
         const key = event.key.toLowerCase();
-        if (event.ctrlKey && key === "z") { event.preventDefault(); if (undo()) setStatus("Undo"); return; }
-        if (event.ctrlKey && key === "y") { event.preventDefault(); if (redo()) setStatus("Redo"); return; }
+        const mod = event.ctrlKey || event.metaKey;
+        if (mod && key === "z") { event.preventDefault(); if (event.shiftKey ? redo() : undo()) setStatus(event.shiftKey ? "Redo" : "Undo"); return; }
+        if (mod && key === "y") { event.preventDefault(); if (redo()) setStatus("Redo"); return; }
         if (key === "w") activateTool("select");
         if (key === "g") activateTool("translate");
         if (key === "r") activateTool("rotate");
         if (key === "s") activateTool("scale");
         if (key === "f") frameSelected();
-        if (key === "escape") clearSelection();
+        if (key === "escape") { closeMobileSheet(); closeMenu(); clearSelection(); }
     });
+}
+
+function bindResponsiveLayer() {
+    const apply = () => {
+        state.device = getDeviceProfile();
+        document.documentElement.dataset.device = state.device.mobile ? "mobile" : state.device.tablet ? "tablet" : "desktop";
+        document.documentElement.dataset.input = state.device.coarse ? "touch" : "mouse";
+        if (!state.device.mobile) closeMobileSheet();
+    };
+    window.addEventListener("resize", apply, { passive: true });
+    window.addEventListener("orientationchange", () => setTimeout(apply, 80), { passive: true });
+    apply();
 }
 
 function activateTool(mode) {
@@ -132,10 +165,7 @@ function toggleAddMenu(anchor) {
     popover.hidden = false;
 }
 
-function closeMenu() {
-    const popover = document.getElementById("menuPopover");
-    if (popover) popover.hidden = true;
-}
+function closeMenu() { const popover = document.getElementById("menuPopover"); if (popover) popover.hidden = true; }
 
 function frameSelected() {
     const object = getSelected();
@@ -150,10 +180,58 @@ function frameSelected() {
     setStatus(`Framed ${object.name || object.type}`);
 }
 
-function updateObjectCount() {
-    const count = document.getElementById("objectCount");
-    if (count) count.textContent = getObjects().length;
+function alignView(axis) {
+    const target = getSelected();
+    const center = target ? new THREE.Box3().setFromObject(target).getCenter(new THREE.Vector3()) : controls.target.clone();
+    const distance = target ? Math.max(new THREE.Box3().setFromObject(target).getBoundingSphere(new THREE.Sphere()).radius * 3, 3) : 6;
+    const positions = { x: new THREE.Vector3(distance, 0, 0), y: new THREE.Vector3(0, distance, 0), z: new THREE.Vector3(0, 0, distance) };
+    camera.position.copy(center).add(positions[axis]);
+    controls.target.copy(center);
+    controls.update();
+    setStatus(`${axis.toUpperCase()} axis view`);
 }
+
+function toggleMobileSheet(type) {
+    if (!state.device.mobile) {
+        if (type === "scene") document.getElementById("leftPanel")?.scrollIntoView({ behavior: "smooth" });
+        return;
+    }
+    if (state.mobileSheet === type) return closeMobileSheet();
+    state.mobileSheet = type;
+    const panel = type === "scene" ? document.getElementById("leftPanel") : document.getElementById("rightPanel");
+    const backdrop = document.getElementById("mobileBackdrop");
+    if (!panel || !backdrop) return;
+    panel.classList.add("mobile-sheet");
+    panel.classList.add("mobile-sheet-open");
+    panel.setAttribute("aria-modal", "true");
+    panel.setAttribute("role", "dialog");
+    backdrop.hidden = false;
+    document.body.classList.add("sheet-open");
+    ensureSheetHeader(panel, type);
+}
+
+function ensureSheetHeader(panel, type) {
+    if (panel.querySelector(".mobile-sheet-header")) return;
+    const header = document.createElement("div");
+    header.className = "mobile-sheet-header";
+    header.innerHTML = `<div><span class="eyebrow">Mobile workspace</span><strong>${type === "scene" ? "Scene" : "Inspector"}</strong></div><button class="mobile-sheet-close" aria-label="Close panel">×</button>`;
+    const handle = document.createElement("div");
+    handle.className = "mobile-sheet-handle";
+    header.querySelector(".mobile-sheet-close").addEventListener("click", closeMobileSheet);
+    panel.prepend(header);
+    panel.prepend(handle);
+}
+
+function closeMobileSheet() {
+    const panels = [document.getElementById("leftPanel"), document.getElementById("rightPanel")];
+    panels.forEach(panel => panel?.classList.remove("mobile-sheet", "mobile-sheet-open"));
+    const backdrop = document.getElementById("mobileBackdrop");
+    if (backdrop) backdrop.hidden = true;
+    document.body.classList.remove("sheet-open");
+    state.mobileSheet = null;
+}
+
+function updateObjectCount() { const count = document.getElementById("objectCount"); if (count) count.textContent = getObjects().length; }
 
 function updateHistoryButtons() {
     const undoButton = document.getElementById("undoBtn");
@@ -167,3 +245,17 @@ function setStatus(message) {
     const text = document.getElementById("statusText");
     if (text) text.textContent = message;
 }
+
+// Prevent accidental browser long-press selection/drag behavior in the editor.
+let longPressTimer = 0;
+document.addEventListener("pointerdown", event => {
+    if (!state.device?.coarse || !event.target.closest("#viewport")) return;
+    clearTimeout(longPressTimer);
+    longPressTimer = window.setTimeout(() => {
+        if (isDraggingTransform()) return;
+        const selected = getSelected();
+        if (selected) setStatus(`Selected ${selected.name || selected.type} · use toolbar for actions`);
+    }, 550);
+}, { passive: true });
+document.addEventListener("pointerup", () => clearTimeout(longPressTimer), { passive: true });
+document.addEventListener("pointercancel", () => clearTimeout(longPressTimer), { passive: true });
