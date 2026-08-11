@@ -51,5 +51,11 @@
     <footer id="statusBar"><div class="status-left"><span class="status-indicator"></span><span id="statusText">Ready</span></div><div class="status-center">ModelForge 3D · Created by Md. Tanvir Rahman</div><div class="status-right"><span>Objects <strong id="objectCount">0</strong></span><span>FPS <strong id="fpsCounter">--</strong></span></div></footer>
     <input id="fileInput" type="file" accept=".glb,.gltf" hidden>
     <script type="module" src="main.js"></script>
+    <script type="module">
+        import { initDeviceExperience } from "./core/deviceExperience.js";
+        const start = () => initDeviceExperience();
+        if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", start, { once: true });
+        else start();
+    </script>
 </body>
 </html>
