@@ -24,6 +24,7 @@ let pointerMoved = false;
 let lastTouchTap = 0;
 let lastTouchPoint = null;
 let suppressNextClick = false;
+const activeTouchPointers = new Set();
 
 export function getSelected() { return selected; }
 export function getSelection() { return getMultiSelection(); }
@@ -92,6 +93,16 @@ export function setupSelection(renderer, camera, scene) {
     installGroupSelectionSync();
 
     canvas.addEventListener("pointerdown", event => {
+        if (event.pointerType === "touch") {
+            activeTouchPointers.add(event.pointerId);
+            // A multi-touch gesture belongs to OrbitControls, not the tap/focus
+            // recognizer. Clearing the tap candidate here prevents the second
+            // finger of a pinch from being mistaken for a double-tap.
+            if (activeTouchPointers.size > 1) {
+                lastTouchTap = 0;
+                lastTouchPoint = null;
+            }
+        }
         const tc = getTransform();
         if (event.button !== 0 || isDraggingTransform() || tc?.axis) return;
         pointerStart = { x: event.clientX, y: event.clientY, pointerId: event.pointerId, shift: event.shiftKey };
@@ -111,12 +122,21 @@ export function setupSelection(renderer, camera, scene) {
     }, { passive: true });
 
     canvas.addEventListener("pointerup", event => {
+        const touchPointer = event.pointerType === "touch";
+        const touchCountBeforeRelease = activeTouchPointers.size;
+        if (touchPointer) activeTouchPointers.delete(event.pointerId);
+
         if (event.pointerId !== pointerStart?.pointerId) return;
         if (boxDragging) {
             finishBoxSelection(event, camera, scene);
             suppressNextClick = true;
         }
-        if (event.pointerType === "touch" && !pointerMoved && !boxDragging) {
+
+        // Never interpret a pointer that was part of a multi-touch gesture as
+        // a tap. This preserves OrbitControls pinch-to-zoom, including pinch
+        // zoom-out immediately after a focus operation on Android.
+        const wasMultiTouch = touchPointer && touchCountBeforeRelease > 1;
+        if (touchPointer && !wasMultiTouch && !pointerMoved && !boxDragging) {
             const now = performance.now();
             const point = { x: event.clientX, y: event.clientY };
             const closeEnough = lastTouchPoint && Math.hypot(point.x - lastTouchPoint.x, point.y - lastTouchPoint.y) < TOUCH_DOUBLE_TAP_DISTANCE;
@@ -138,7 +158,8 @@ export function setupSelection(renderer, camera, scene) {
         resetPointerState();
     }, { passive: true });
 
-    canvas.addEventListener("pointercancel", () => {
+    canvas.addEventListener("pointercancel", event => {
+        if (event.pointerType === "touch") activeTouchPointers.delete(event.pointerId);
         cancelBoxSelection();
         resetPointerState();
         suppressNextClick = true;
@@ -151,9 +172,6 @@ export function setupSelection(renderer, camera, scene) {
         }
         if (event.button !== 0 || isDraggingTransform()) return;
 
-        // Browser dblclick is not guaranteed when another canvas control consumes
-        // the gesture. A second native click (detail === 2) is therefore treated
-        // as the canonical desktop focus gesture.
         if (event.detail >= 2) {
             const mode = getFocusMode();
             const target = pickDeep(event, camera, scene, mode.group || null);
@@ -172,9 +190,6 @@ export function setupSelection(renderer, camera, scene) {
         else if (!toggle) clearSelection();
     }, { passive: true });
 
-    // Keep the dblclick event as a second path for browsers that expose it
-    // normally. Capture phase makes the focus gesture independent of overlays
-    // attached later in the DOM.
     canvas.addEventListener("dblclick", event => {
         if (event.pointerType === "touch") return;
         event.preventDefault();
@@ -224,9 +239,6 @@ function pickDeep(event, camera, scene, focusGroup = null) {
             }
             current = current.parent;
         }
-        // A rendered mesh is itself a valid focus target even when imported
-        // geometry did not receive editorObject metadata. This is what makes
-        // double-click focus reliable for imported/grouped meshes.
         if (!focusGroup && firstMesh) return firstMesh;
     }
     return null;
