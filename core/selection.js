@@ -4,7 +4,7 @@ import { updateInspector } from "../ui/inspector.js";
 import { highlight, highlightMultiple, clearHighlight } from "./highlight.js";
 import { toggleMultiSelect, clearMultiSelection, getMultiSelection, setMultiSelection } from "./grouping.js";
 import { setActiveHierarchy, clearHierarchySelection } from "../ui/hierarchy.js";
-import { focusObject, consumeFocusTarget } from "./focus.js";
+import { focusObject, consumeFocusTarget, getFocusMode } from "./focus.js";
 
 const raycaster = new THREE.Raycaster();
 const mouse = new THREE.Vector2();
@@ -40,7 +40,6 @@ export function clearSelection() {
 
 export function selectObject(object, options = {}) {
     if (!object) return clearSelection();
-
     if (options.toggle) {
         toggleMultiSelect(object);
         const selection = getMultiSelection();
@@ -49,7 +48,6 @@ export function selectObject(object, options = {}) {
         window.dispatchEvent(new CustomEvent("editor:selection-change", { detail: selection }));
         return;
     }
-
     selected = object;
     setMultiSelection([object]);
     applySelectionVisuals([object]);
@@ -73,7 +71,6 @@ function applySelectionVisuals(selection, options = {}) {
         clearHierarchySelection();
         return;
     }
-
     if (selection.length === 1) {
         attachTransform(selection[0]);
         highlight(selection[0]);
@@ -81,7 +78,6 @@ function applySelectionVisuals(selection, options = {}) {
         setActiveHierarchy(selection[0]);
         return;
     }
-
     detachTransform();
     if (options.highlight !== false) highlightMultiple(selection);
     else clearHighlight();
@@ -98,7 +94,6 @@ export function setupSelection(renderer, camera, scene) {
     canvas.addEventListener("pointerdown", event => {
         const tc = getTransform();
         if (event.button !== 0 || isDraggingTransform() || tc?.axis) return;
-
         pointerStart = { x: event.clientX, y: event.clientY, pointerId: event.pointerId, shift: event.shiftKey };
         pointerMoved = false;
         suppressNextClick = false;
@@ -106,27 +101,21 @@ export function setupSelection(renderer, camera, scene) {
 
     canvas.addEventListener("pointermove", event => {
         if (!pointerStart || event.pointerId !== pointerStart.pointerId) return;
-
         const distance = Math.hypot(event.clientX - pointerStart.x, event.clientY - pointerStart.y);
         if (distance > CLICK_DRAG_THRESHOLD) pointerMoved = true;
-
-        // Shift + drag becomes box selection. Shift + click remains normal multi-select.
         if (pointerStart.shift && event.pointerType !== "touch" && !boxDragging && distance > CLICK_DRAG_THRESHOLD) {
             startBoxSelection({ ...event, pointerId: pointerStart.pointerId }, pointerStart);
             suppressNextClick = true;
         }
-
         if (boxDragging) updateBox(event);
     }, { passive: true });
 
     canvas.addEventListener("pointerup", event => {
         if (event.pointerId !== pointerStart?.pointerId) return;
-
         if (boxDragging) {
             finishBoxSelection(event, camera, scene);
             suppressNextClick = true;
         }
-
         if (event.pointerType === "touch" && !pointerMoved && !boxDragging) {
             const now = performance.now();
             const point = { x: event.clientX, y: event.clientY };
@@ -146,7 +135,6 @@ export function setupSelection(renderer, camera, scene) {
                 lastTouchPoint = point;
             }
         }
-
         resetPointerState();
     }, { passive: true });
 
@@ -156,8 +144,6 @@ export function setupSelection(renderer, camera, scene) {
         suppressNextClick = true;
     }, { passive: true });
 
-    // Native click is intentionally used for selection. OrbitControls consumes pointer
-    // gestures, while click is only emitted for a completed click, not a camera drag.
     canvas.addEventListener("click", event => {
         if (suppressNextClick) {
             suppressNextClick = false;
@@ -166,16 +152,14 @@ export function setupSelection(renderer, camera, scene) {
         if (event.button !== 0 || isDraggingTransform()) return;
         const target = pick(event, camera, scene);
         const toggle = event.ctrlKey || event.metaKey || event.shiftKey;
-        if (target) {
-            selectObject(target, { toggle });
-        } else if (!toggle) {
-            clearSelection();
-        }
+        if (target) selectObject(target, { toggle });
+        else if (!toggle) clearSelection();
     }, { passive: true });
 
     canvas.addEventListener("dblclick", event => {
         if (event.pointerType === "touch") return;
-        const target = pickDeep(event, camera, scene);
+        const mode = getFocusMode();
+        const target = pickDeep(event, camera, scene, mode.group || null);
         if (!target) return;
         if (consumeFocusTarget(target)) return;
         focusObject(target, { duration: 360 });
@@ -183,10 +167,7 @@ export function setupSelection(renderer, camera, scene) {
     }, { passive: true });
 }
 
-function resetPointerState() {
-    pointerStart = null;
-    pointerMoved = false;
-}
+function resetPointerState() { pointerStart = null; pointerMoved = false; }
 
 function installGroupSelectionSync() {
     if (groupSyncInstalled) return;
@@ -209,12 +190,17 @@ function pick(event, camera, scene) {
     return null;
 }
 
-function pickDeep(event, camera, scene) {
+function pickDeep(event, camera, scene, focusGroup = null) {
     const hits = raycastAll(event, camera, scene);
     for (const hit of hits) {
         let current = hit.object;
+        let firstMesh = null;
         while (current && current !== scene) {
-            if (current.userData?.editorObject && !current.userData?.editorOnly && (current.isMesh || current.userData?.selectable === true)) return current;
+            if (current.isMesh && !current.userData?.editorOnly) firstMesh ||= current;
+            if (focusGroup && current === focusGroup) return firstMesh || focusGroup;
+            if (!focusGroup && current.userData?.editorObject && !current.userData?.editorOnly && (current.isMesh || current.userData?.selectable === true)) {
+                return current;
+            }
             current = current.parent;
         }
     }
@@ -265,12 +251,9 @@ function finishBoxSelection(event, camera, scene) {
     const start = boxStart;
     const end = { x: event.clientX, y: event.clientY };
     const rect = selectionCanvas.getBoundingClientRect();
-    const left = Math.min(start.x, end.x);
-    const right = Math.max(start.x, end.x);
-    const top = Math.min(start.y, end.y);
-    const bottom = Math.max(start.y, end.y);
+    const left = Math.min(start.x, end.x), right = Math.max(start.x, end.x);
+    const top = Math.min(start.y, end.y), bottom = Math.max(start.y, end.y);
     const picked = [];
-
     for (const object of scene.children) {
         const root = findSelectableRoot(object, scene);
         if (!root || root !== object) continue;
@@ -280,28 +263,14 @@ function finishBoxSelection(event, camera, scene) {
         const y = rect.top + (1 - projected.y) * 0.5 * rect.height;
         if (x >= left && x <= right && y >= top && y <= bottom) picked.push(root);
     }
-
     removeBoxElement();
     if (picked.length) selectMultiple(picked, { highlight: true });
     else if (!(event.ctrlKey || event.metaKey)) clearSelection();
 }
 
-function cancelBoxSelection() {
-    boxDragging = false;
-    boxStart = null;
-    removeBoxElement();
-}
-
-function removeBoxElement() {
-    boxElement?.remove();
-    boxElement = null;
-    boxDragging = false;
-    boxStart = null;
-}
-
-function normalizeObjects(objects) {
-    return [...new Set((objects || []).filter(object => object?.userData?.editorObject && !object?.userData?.editorOnly))];
-}
+function cancelBoxSelection() { boxDragging = false; boxStart = null; removeBoxElement(); }
+function removeBoxElement() { boxElement?.remove(); boxElement = null; boxDragging = false; boxStart = null; }
+function normalizeObjects(objects) { return [...new Set((objects || []).filter(object => object?.userData?.editorObject && !object?.userData?.editorOnly))]; }
 
 function findSelectableRoot(object, scene) {
     let current = object;
