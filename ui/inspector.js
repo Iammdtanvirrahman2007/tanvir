@@ -1,280 +1,304 @@
 import * as THREE from "three";
+import { pushHistory } from "../core/history.js";
+
+let currentObject = null;
+let activeTab = "object";
+let updating = false;
+
+export function initInspector() {
+    document.querySelectorAll(".inspector-tab").forEach(tab => {
+        tab.addEventListener("click", () => {
+            activeTab = tab.dataset.tab || "object";
+            document.querySelectorAll(".inspector-tab").forEach(item => item.classList.toggle("active", item === tab));
+            renderInspector();
+        });
+    });
+}
 
 export function updateInspector(object) {
-    const panel = document.getElementById("rightPanel");
+    currentObject = object || null;
+    renderInspector();
+}
 
-    if (!object) {
-        panel.innerHTML = `
-            <h3>Inspector</h3>
-            <p>No object selected</p>
-        `;
+export function getInspectorObject() {
+    return currentObject;
+}
+
+export function refreshInspector() {
+    if (currentObject) renderInspector();
+}
+
+function renderInspector() {
+    const panel = document.getElementById("inspectorContent");
+    if (!panel) return;
+
+    panel.replaceChildren();
+
+    if (!currentObject) {
+        const empty = document.createElement("div");
+        empty.className = "empty-inspector";
+        empty.innerHTML = `<div class="empty-icon">◇</div><strong>No object selected</strong><p>Select an object in the viewport or Scene panel to inspect its properties.</p>`;
+        panel.appendChild(empty);
         return;
     }
 
-    panel.innerHTML = `
-        <h3>Inspector</h3>
-        <hr>
-        
-        <label>Name</label>
-        <input id="ins_name" type="text" value="${object.name}">
-        <hr>
-        
-        <h4>Position</h4>
-        <label>X</label>
-        <input id="posX" type="number" step="0.1" value="${object.position.x.toFixed(2)}">
-        <label>Y</label>
-        <input id="posY" type="number" step="0.1" value="${object.position.y.toFixed(2)}">
-        <label>Z</label>
-        <input id="posZ" type="number" step="0.1" value="${object.position.z.toFixed(2)}">
-        <hr>
-        
-        <h4>Rotation</h4>
-        <label>X</label>
-        <input id="rotX" type="number" step="1" value="${(object.rotation.x * 57.2958).toFixed(1)}">
-        <label>Y</label>
-        <input id="rotY" type="number" step="1" value="${(object.rotation.y * 57.2958).toFixed(1)}">
-        <label>Z</label>
-        <input id="rotZ" type="number" step="1" value="${(object.rotation.z * 57.2958).toFixed(1)}">
-        <hr>
-        
-        <h4>Scale</h4>
-        <label>X</label>
-        <input id="scaleX" type="number" step="0.1" value="${object.scale.x.toFixed(2)}">
-        <label>Y</label>
-        <input id="scaleY" type="number" step="0.1" value="${object.scale.y.toFixed(2)}">
-        <label>Z</label>
-        <input id="scaleZ" type="number" step="0.1" value="${object.scale.z.toFixed(2)}">
-        <hr>
-        
-        <h4>Material</h4>
-        <label>Material Slot</label>
-        <select id="materialSlot"></select>
-        <br><br>
-        <button id="addMaterial">+ Add Material</button>
-        <button id="removeMaterial">- Remove Material</button>
-        <br><br>
-        
-        <label>Color</label>
-        <input id="matColor" type="color">
-        <br><br>
-        
-        <label>Texture</label>
-        <input id="textureFile" type="file" accept=".png,.jpg,.jpeg">
-        <br><br>
-        
-        <label>Metalness</label>
-        <input id="metalness" type="range" min="0" max="1" step="0.01">
-        <br><br>
-        
-        <label>Roughness</label>
-        <input id="roughness" type="range" min="0" max="1" step="0.01">
-        <br><br>
-        
-        <label>Opacity</label>
-        <input id="opacity" type="range" min="0" max="1" step="0.01">
-        <br><br>
-        
-        <label>
-            <input id="wireframe" type="checkbox"> Wireframe
-        </label>
-        <br><br>
-        
-        <label>
-            <input id="visible" type="checkbox"> Visible
-        </label>
-    `;
-
-    // ==========================
-    // Name
-    // ==========================
-    document.getElementById("ins_name").oninput = e => {
-        object.name = e.target.value;
-        const item = document.getElementById(object.uuid);
-        if (item) {
-            item.textContent = object.name;
-        }
-    };
-
-    // ==========================
-    // Position
-    // ==========================
-    document.getElementById("posX").oninput = e => {
-        object.position.x = parseFloat(e.target.value);
-    };
-    document.getElementById("posY").oninput = e => {
-        object.position.y = parseFloat(e.target.value);
-    };
-    document.getElementById("posZ").oninput = e => {
-        object.position.z = parseFloat(e.target.value);
-    };
-
-    // ==========================
-    // Rotation
-    // ==========================
-    document.getElementById("rotX").oninput = e => {
-        object.rotation.x = THREE.MathUtils.degToRad(parseFloat(e.target.value));
-    };
-    document.getElementById("rotY").oninput = e => {
-        object.rotation.y = THREE.MathUtils.degToRad(parseFloat(e.target.value));
-    };
-    document.getElementById("rotZ").oninput = e => {
-        object.rotation.z = THREE.MathUtils.degToRad(parseFloat(e.target.value));
-    };
-
-    // ==========================
-    // Scale
-    // ==========================
-    document.getElementById("scaleX").oninput = e => {
-        object.scale.x = parseFloat(e.target.value);
-    };
-    document.getElementById("scaleY").oninput = e => {
-        object.scale.y = parseFloat(e.target.value);
-    };
-    document.getElementById("scaleZ").oninput = e => {
-        object.scale.z = parseFloat(e.target.value);
-    };
-
-    // ==========================
-    // Material
-    // ==========================
-    if (object.material) {
-        const materials = Array.isArray(object.material) ? object.material : [object.material];
-        const slot = document.getElementById("materialSlot");
-        const addBtn = document.getElementById("addMaterial");
-        const removeBtn = document.getElementById("removeMaterial");
-        
-        slot.innerHTML = "";
-        
-        materials.forEach((mat, index) => {
-            const option = document.createElement("option");
-            option.value = index;
-            option.textContent = mat.name || "Material " + index;
-            slot.appendChild(option);
-        });
-
-        let material = materials[0];
-
-        function loadMaterial(index) {
-            material = materials[index];
-            document.getElementById("matColor").value = "#" + material.color.getHexString();
-            document.getElementById("metalness").value = material.metalness ?? 0;
-            document.getElementById("roughness").value = material.roughness ?? 1;
-            
-            // Opacity আপডেট করা হয়েছে
-            document.getElementById("opacity").value = material.opacity ?? 1;
-            
-            document.getElementById("wireframe").checked = material.wireframe;
-        }
-
-        loadMaterial(0);
-
-        slot.onchange = () => {
-            loadMaterial(parseInt(slot.value));
-        };
-
-        // ======================
-        // Add Material
-        // ======================
-        addBtn.onclick = () => {
-            materials.push(
-                new THREE.MeshStandardMaterial({
-                    color: 0xffffff,
-                    metalness: 0,
-                    roughness: 1
-                })
-            );
-            object.material = materials;
-            updateInspector(object);
-        };
-
-        // ======================
-        // Remove Material
-        // ======================
-        removeBtn.onclick = () => {
-            if (materials.length <= 1) {
-                alert("At least one material is required.");
-                return;
-            }
-            materials.pop();
-            object.material = materials;
-            updateInspector(object);
-        };
-
-        // ======================
-        // Color
-        // ======================
-        document.getElementById("matColor").oninput = e => {
-            material.color.set(e.target.value);
-        };
-
-        // ======================
-        // Metalness
-        // ======================
-        document.getElementById("metalness").oninput = e => {
-            material.metalness = parseFloat(e.target.value);
-        };
-
-        // ======================
-        // Roughness
-        // ======================
-        document.getElementById("roughness").oninput = e => {
-            material.roughness = parseFloat(e.target.value);
-        };
-
-        // ======================
-        // Opacity
-        // ======================
-        document.getElementById("opacity").oninput = e => {
-            const value = parseFloat(e.target.value);
-
-            material.opacity = value;
-
-            // 1 এর কম হলে transparency চালু
-            material.transparent = value < 1;
-
-            // Depth write বন্ধ করলে অনেক ক্ষেত্রে ঠিকমতো দেখা যায়
-            material.depthWrite = value >= 1;
-
-            material.needsUpdate = true;
-        };
-
-        // ======================
-        // Wireframe
-        // ======================
-        document.getElementById("wireframe").onchange = e => {
-            material.wireframe = e.target.checked;
-        };
-
-        // ======================
-        // Texture
-        // ======================
-        document.getElementById("textureFile").onchange = e => {
-            const file = e.target.files[0];
-            if (!file) return;
-
-            const reader = new FileReader();
-            reader.onload = () => {
-                const loader = new THREE.TextureLoader();
-                loader.load(
-                    reader.result,
-                    texture => {
-                        texture.colorSpace = THREE.SRGBColorSpace;
-                        texture.flipY = false;
-                        material.map = texture;
-                        material.needsUpdate = true;
-                    }
-                );
-            };
-            reader.readAsDataURL(file);
-        };
+    if (activeTab === "material") {
+        panel.appendChild(buildMaterialSection(currentObject));
+        return;
     }
 
-    // ==========================
-    // Visible
-    // ==========================
-    const visible = document.getElementById("visible");
-    visible.checked = object.visible;
-    visible.onchange = e => {
-        object.visible = e.target.checked;
+    panel.append(
+        buildIdentitySection(currentObject),
+        buildTransformSection(currentObject),
+        buildVisibilitySection(currentObject),
+        buildMetadataSection(currentObject)
+    );
+}
+
+function buildIdentitySection(object) {
+    const body = document.createElement("div");
+    body.className = "section-body";
+
+    const row = document.createElement("div");
+    row.className = "property-row";
+    row.innerHTML = `<label>Name</label><input class="property-input" id="ins_name" type="text">`;
+    row.querySelector("input").value = object.name || object.type;
+    row.querySelector("input").addEventListener("change", event => {
+        const previous = object.name;
+        const next = event.target.value.trim() || previous;
+        if (next === previous) return;
+        object.name = next;
+        pushHistory({ undo: () => { object.name = previous; updateInspector(object); }, redo: () => { object.name = next; updateInspector(object); } });
+        dispatchRefresh("Renamed object");
+    });
+    body.appendChild(row);
+
+    const typeRow = document.createElement("div");
+    typeRow.className = "property-row";
+    typeRow.innerHTML = `<label>Type</label><input class="property-input" disabled>`;
+    typeRow.querySelector("input").value = object.isGroup ? "Group" : object.geometry?.type || object.type;
+    body.appendChild(typeRow);
+
+    return section("Object", body);
+}
+
+function buildTransformSection(object) {
+    const body = document.createElement("div");
+    body.className = "section-body";
+    body.appendChild(vectorControl("Position", ["posX", "posY", "posZ"], [object.position.x, object.position.y, object.position.z], value => setVector(object, "position", value)));
+    body.appendChild(vectorControl("Rotation", ["rotX", "rotY", "rotZ"], [THREE.MathUtils.radToDeg(object.rotation.x), THREE.MathUtils.radToDeg(object.rotation.y), THREE.MathUtils.radToDeg(object.rotation.z)], value => setRotation(object, value)));
+    body.appendChild(vectorControl("Scale", ["scaleX", "scaleY", "scaleZ"], [object.scale.x, object.scale.y, object.scale.z], value => setVector(object, "scale", value)));
+    return section("Transform", body);
+}
+
+function vectorControl(title, ids, values, apply) {
+    const wrapper = document.createElement("div");
+    wrapper.className = "property-row";
+    wrapper.style.display = "block";
+    wrapper.innerHTML = `<label style="display:block;margin-bottom:4px">${title}</label>`;
+
+    const row = document.createElement("div");
+    row.style.display = "grid";
+    row.style.gridTemplateColumns = "1fr 1fr 1fr";
+    row.style.gap = "4px";
+
+    ["X", "Y", "Z"].forEach((axis, index) => {
+        const input = document.createElement("input");
+        input.className = "property-input";
+        input.id = ids[index];
+        input.type = "number";
+        input.step = title === "Rotation" ? "1" : "0.01";
+        input.value = Number(values[index]).toFixed(title === "Rotation" ? 1 : 2);
+        input.title = `${title} ${axis}`;
+        input.addEventListener("change", () => {
+            const next = values.slice();
+            next[index] = Number(input.value) || 0;
+            apply(next);
+        });
+        row.appendChild(input);
+    });
+
+    wrapper.appendChild(row);
+    return wrapper;
+}
+
+function setVector(object, property, next) {
+    const before = object[property].clone();
+    const after = new THREE.Vector3(...next);
+    object[property].copy(after);
+    pushHistory({ undo: () => { object[property].copy(before); refreshInspector(); }, redo: () => { object[property].copy(after); refreshInspector(); } });
+    dispatchRefresh(`${property} changed`);
+}
+
+function setRotation(object, degrees) {
+    const before = object.rotation.clone();
+    const after = new THREE.Euler(...degrees.map(value => THREE.MathUtils.degToRad(value)), object.rotation.order);
+    object.rotation.copy(after);
+    pushHistory({ undo: () => { object.rotation.copy(before); refreshInspector(); }, redo: () => { object.rotation.copy(after); refreshInspector(); } });
+    dispatchRefresh("Rotation changed");
+}
+
+function buildVisibilitySection(object) {
+    const body = document.createElement("div");
+    body.className = "section-body";
+    const row = document.createElement("div");
+    row.className = "property-row";
+    row.innerHTML = `<label>Visible</label><input type="checkbox">`;
+    const checkbox = row.querySelector("input");
+    checkbox.checked = object.visible;
+    checkbox.addEventListener("change", () => {
+        const before = object.visible;
+        const after = checkbox.checked;
+        object.visible = after;
+        pushHistory({ undo: () => { object.visible = before; refreshInspector(); }, redo: () => { object.visible = after; refreshInspector(); } });
+    });
+    body.appendChild(row);
+    return section("Visibility", body);
+}
+
+function buildMetadataSection(object) {
+    const body = document.createElement("div");
+    body.className = "section-body";
+    const entries = [
+        ["UUID", object.uuid],
+        ["Mass", object.userData?.mass ?? "1"],
+        ["Part Type", object.userData?.partType || "Default"]
+    ];
+    entries.forEach(([label, value]) => {
+        const row = document.createElement("div");
+        row.className = "property-row";
+        row.innerHTML = `<label>${label}</label><input class="property-input" disabled>`;
+        row.querySelector("input").value = value;
+        body.appendChild(row);
+    });
+    return section("Metadata", body);
+}
+
+function buildMaterialSection(object) {
+    const body = document.createElement("div");
+    body.className = "section-body";
+
+    if (!object.material) {
+        const message = document.createElement("p");
+        message.style.color = "#777b85";
+        message.textContent = "This object has no editable material.";
+        body.appendChild(message);
+        return section("Material", body);
+    }
+
+    const materials = Array.isArray(object.material) ? object.material : [object.material];
+    const selectRow = document.createElement("div");
+    selectRow.className = "property-row";
+    selectRow.innerHTML = `<label>Slot</label><select class="property-select" id="materialSlot"></select>`;
+    const slot = selectRow.querySelector("select");
+    materials.forEach((material, index) => {
+        const option = document.createElement("option");
+        option.value = index;
+        option.textContent = material.name || `Material ${index + 1}`;
+        slot.appendChild(option);
+    });
+    body.appendChild(selectRow);
+
+    const controls = document.createElement("div");
+    controls.style.marginTop = "8px";
+    body.appendChild(controls);
+
+    const renderMaterial = index => {
+        controls.replaceChildren();
+        const material = materials[index];
+        if (!material) return;
+
+        addColorControl(controls, "Color", material, value => {
+            material.color.set(value);
+            material.needsUpdate = true;
+        });
+        addRangeControl(controls, "Metalness", material.metalness ?? 0, value => { material.metalness = value; });
+        addRangeControl(controls, "Roughness", material.roughness ?? 1, value => { material.roughness = value; });
+        addRangeControl(controls, "Opacity", material.opacity ?? 1, value => {
+            material.opacity = value;
+            material.transparent = value < 1;
+            material.depthWrite = value >= 1;
+            material.needsUpdate = true;
+        });
+
+        const wire = document.createElement("div");
+        wire.className = "property-row";
+        wire.innerHTML = `<label>Wireframe</label><input type="checkbox">`;
+        const checkbox = wire.querySelector("input");
+        checkbox.checked = !!material.wireframe;
+        checkbox.addEventListener("change", () => { material.wireframe = checkbox.checked; material.needsUpdate = true; });
+        controls.appendChild(wire);
+
+        const texture = document.createElement("label");
+        texture.className = "file-input-label";
+        texture.textContent = "Load Texture";
+        const input = document.createElement("input");
+        input.type = "file";
+        input.accept = ".png,.jpg,.jpeg,.webp";
+        input.hidden = true;
+        input.addEventListener("change", () => loadTexture(input.files?.[0], material));
+        texture.appendChild(input);
+        texture.addEventListener("click", () => input.click());
+        controls.appendChild(texture);
     };
+
+    slot.addEventListener("change", () => renderMaterial(Number(slot.value)));
+    renderMaterial(0);
+    return section("Material", body);
+}
+
+function addColorControl(parent, label, material, onChange) {
+    const row = document.createElement("div");
+    row.className = "property-row";
+    row.innerHTML = `<label>${label}</label><input class="property-input" type="color">`;
+    const input = row.querySelector("input");
+    input.value = `#${material.color.getHexString()}`;
+    input.addEventListener("input", () => onChange(input.value));
+    parent.appendChild(row);
+}
+
+function addRangeControl(parent, label, initial, onChange) {
+    const row = document.createElement("div");
+    row.className = "property-row";
+    row.innerHTML = `<label>${label}</label><div class="range-row"><input type="range" min="0" max="1" step="0.01"><input class="range-value" type="number" min="0" max="1" step="0.01"></div>`;
+    const range = row.querySelector("input[type=range]");
+    const value = row.querySelector("input[type=number]");
+    range.value = initial;
+    value.value = Number(initial).toFixed(2);
+    const sync = next => { const n = Math.min(1, Math.max(0, Number(next) || 0)); range.value = n; value.value = n.toFixed(2); onChange(n); };
+    range.addEventListener("input", () => sync(range.value));
+    value.addEventListener("change", () => sync(value.value));
+    parent.appendChild(row);
+}
+
+function loadTexture(file, material) {
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => new THREE.TextureLoader().load(reader.result, texture => {
+        texture.colorSpace = THREE.SRGBColorSpace;
+        texture.flipY = false;
+        material.map = texture;
+        material.needsUpdate = true;
+    });
+    reader.readAsDataURL(file);
+}
+
+function section(title, body) {
+    const wrapper = document.createElement("section");
+    wrapper.className = "inspector-section";
+    const head = document.createElement("button");
+    head.className = "section-head";
+    head.innerHTML = `<span class="section-chevron">▾</span>${title}`;
+    head.addEventListener("click", () => {
+        const hidden = body.hidden;
+        body.hidden = !hidden;
+        head.querySelector(".section-chevron").textContent = hidden ? "▾" : "▸";
+    });
+    wrapper.append(head, body);
+    return wrapper;
+}
+
+function dispatchRefresh(message) {
+    window.dispatchEvent(new CustomEvent("editor:status", { detail: message }));
+    if (!updating) renderInspector();
 }
