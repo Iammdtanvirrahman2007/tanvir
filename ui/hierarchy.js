@@ -1,5 +1,6 @@
 import { selectObject, clearSelection } from "../core/selection.js";
 import { updateInspector } from "./inspector.js";
+import { openGroupFocusDialog } from "./focusDialog.js";
 
 let activeUuid = null;
 let filterText = "";
@@ -66,6 +67,15 @@ function createTreeItem(object, depth) {
     const visibility = makeAction(object.visible === false ? "○" : "●", object.visible === false ? "Show" : "Hide");
     const lock = makeAction(object.userData?.editorLocked ? "🔒" : "□", object.userData?.editorLocked ? "Unlock" : "Lock");
     actions.append(visibility, lock);
+    if (object.userData?.editorGroup === true) {
+        const focus = makeAction("◎", "Focus group");
+        focus.classList.add("tree-focus-action");
+        focus.addEventListener("click", event => {
+            event.stopPropagation();
+            openGroupFocusDialog(object);
+        });
+        actions.append(focus);
+    }
     row.append(arrow, icon, label, kind, actions);
     item.appendChild(row);
 
@@ -178,6 +188,7 @@ function showContextMenu(x, y, object) {
         [object.visible === false ? "Show" : "Hide", () => { object.visible = !object.visible; rebuildHierarchy(); }],
         [object.userData?.editorLocked ? "Unlock" : "Lock", () => { object.userData.editorLocked = !object.userData.editorLocked; rebuildHierarchy(); }],
         ["Frame Selected", () => document.getElementById("frameBtn")?.click()],
+        ["Focus", () => { if (object.userData?.editorGroup) openGroupFocusDialog(object); else window.dispatchEvent(new CustomEvent("editor:focus-object", { detail: object })); }],
         ["Delete", () => window.dispatchEvent(new CustomEvent("editor:delete-object", { detail: object }))]
     ];
     entries.forEach(([text, action]) => { const button = document.createElement("button"); button.textContent = text; button.addEventListener("click", () => { menu.remove(); action(); }); menu.appendChild(button); });
