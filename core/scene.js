@@ -28,7 +28,9 @@ export function initScene(editor = null) {
 
     camera = createCamera();
     renderer = createRenderer();
-    renderer.userData.targetPixelRatio = Math.min(window.devicePixelRatio || 1, 2);
+    // WebGLRenderer does not expose Object3D.userData. Keep the editor-only
+    // pixel-ratio value on the renderer instance itself instead.
+    renderer.targetPixelRatio = Math.min(window.devicePixelRatio || 1, 2);
     app.replaceChildren(renderer.domElement);
 
     controls = createControls(camera, renderer);
@@ -86,14 +88,14 @@ export function resizeRenderer() {
     camera.aspect = width / height;
     camera.updateProjectionMatrix();
 
-    const targetRatio = renderer.userData.targetPixelRatio ?? Math.min(window.devicePixelRatio || 1, 2);
+    const targetRatio = renderer.targetPixelRatio ?? Math.min(window.devicePixelRatio || 1, 2);
     renderer.setPixelRatio(targetRatio);
     renderer.setSize(width, height, false);
 }
 
 export function setRenderPixelRatio(ratio) {
     if (!renderer || !Number.isFinite(ratio) || ratio <= 0) return;
-    renderer.userData.targetPixelRatio = ratio;
+    renderer.targetPixelRatio = ratio;
     resizeRenderer();
 }
 
