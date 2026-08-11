@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { camera, controls } from "./scene.js";
+import { attachTransformPivot, attachTransform, hasTransformPivot } from "./transform.js";
 
 let pendingGroup = null;
 let pendingMode = null;
@@ -9,13 +10,20 @@ export function focusObject(object, options = {}) {
     if (!object || !camera || !controls) return false;
     object.updateMatrixWorld(true);
     const center = new THREE.Box3().setFromObject(object).getCenter(new THREE.Vector3());
+    if (options.setPivotFor && options.setPivotFor !== object) {
+        attachTransformPivot(options.setPivotFor, center);
+    }
     return focusPoint(center, object, options);
 }
 
 export function focusGroupAverage(group, options = {}) {
     if (!group) return false;
     const objects = getFocusObjects(group);
-    if (!objects.length) return focusObject(group, options);
+    if (!objects.length) {
+        const ok = focusObject(group, options);
+        if (ok && group.userData?.editorGroup) attachTransformPivot(group, new THREE.Box3().setFromObject(group).getCenter(new THREE.Vector3()));
+        return ok;
+    }
 
     const average = new THREE.Vector3();
     for (const object of objects) {
@@ -23,6 +31,7 @@ export function focusGroupAverage(group, options = {}) {
         average.add(new THREE.Box3().setFromObject(object).getCenter(new THREE.Vector3()));
     }
     average.multiplyScalar(1 / objects.length);
+    attachTransformPivot(group, average);
     return focusPoint(average, group, options);
 }
 
@@ -56,11 +65,15 @@ export function consumeFocusTarget(object) {
             window.dispatchEvent(new CustomEvent("editor:status", { detail: `Select an item inside ${pendingGroup.name || "the group"}` }));
             return true;
         }
+        const targetCenter = new THREE.Box3().setFromObject(object).getCenter(new THREE.Vector3());
+        attachTransformPivot(pendingGroup, targetCenter);
+        pendingGroup.updateMatrixWorld(true);
+        pendingGroup.userData.focusPoint = { x: targetCenter.x, y: targetCenter.y, z: targetCenter.z };
         pendingGroup = null;
         pendingMode = null;
-        focusObject(object, { duration: 360 });
+        focusPoint(targetCenter, object, { duration: 360 });
         window.dispatchEvent(new CustomEvent("editor:focus-mode", { detail: { group: null, mode: null } }));
-        window.dispatchEvent(new CustomEvent("editor:status", { detail: `Focused ${object.name || object.type}` }));
+        window.dispatchEvent(new CustomEvent("editor:status", { detail: `Focused ${object.name || object.type} · group pivot set` }));
         return true;
     }
     return false;
@@ -74,6 +87,10 @@ export function clearFocusMode() {
 
 export function getFocusMode() {
     return { group: pendingGroup, mode: pendingMode };
+}
+
+export function clearFocusPivot() {
+    if (hasTransformPivot()) attachTransform(null);
 }
 
 function focusPoint(target, object, options) {
