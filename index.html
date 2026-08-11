@@ -39,7 +39,9 @@
         import { initDeviceExperience } from "./core/deviceExperience.js?v=20260811-scene-instance-fix";
         import { initCommandCenter, openCommandCenter } from "./core/commandCenter.js?v=20260811-runtime-fix-2";
         import { initNumericTransform } from "./core/numericTransform.js?v=20260811-runtime-fix-2";
-        const start = () => { initDeviceExperience(); initCommandCenter(); initNumericTransform(); const bindings = [["fileMenuBtn","file"],["editMenuBtn","edit"],["viewMenuBtn","view"],["addMenuBtn","add"],["mobileMoreBtn","more"],["inspectorOptionsBtn","more"]]; bindings.forEach(([id,section]) => document.getElementById(id)?.addEventListener("click", event => { event.stopPropagation(); openCommandCenter(section, event.currentTarget); })); };
+        import { initProjectPersistence } from "./core/projectPersistence.js?v=20260811-persistence-1";
+        import { scene } from "./core/scene.js?v=20260811-runtime-fix";
+        const start = () => { initDeviceExperience(); initCommandCenter(); initNumericTransform(); initProjectPersistence(scene); const bindings = [["fileMenuBtn","file"],["editMenuBtn","edit"],["viewMenuBtn","view"],["addMenuBtn","add"],["mobileMoreBtn","more"],["inspectorOptionsBtn","more"]]; bindings.forEach(([id,section]) => document.getElementById(id)?.addEventListener("click", event => { event.stopPropagation(); openCommandCenter(section, event.currentTarget); })); };
         if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", start, { once: true }); else start();
     </script>
 </body>
