@@ -1,163 +1,78 @@
 import * as THREE from "three";
 import { addObject, clearObjects } from "./objectManager.js";
-import { addToHierarchy } from "../ui/hierarchy.js";
+import { rebuildHierarchy } from "../ui/hierarchy.js";
 
 export function loadScene(scene) {
-
-    // File picker তৈরি
     const input = document.createElement("input");
     input.type = "file";
     input.accept = ".json";
 
     input.addEventListener("change", event => {
-        const file = event.target.files[0];
+        const file = event.target.files?.[0];
         if (!file) return;
 
         const reader = new FileReader();
-
-        reader.onload = e => {
+        reader.onload = () => {
             try {
-                const objects = JSON.parse(e.target.result);
+                const data = JSON.parse(reader.result);
+                if (!Array.isArray(data)) throw new Error("Scene data must be an array.");
 
-                // ==================================
-                // Remove ALL User Objects Safely
-                // ==================================
-                const toRemove = [];
-                
-                scene.children.forEach(obj => {
-                    // Grid, Light, Camera, TransformControls ইত্যাদি বাদ দিয়ে বাকি সব ইউজারের অবজেক্ট রিমুভ করার জন্য সিলেক্ট করা
-                    if (obj.isCamera) return;
-                    if (obj.isLight) return;
-                    if (obj.isGridHelper) return;
-                    if (obj.isAxesHelper) return;
-                    if (obj.type === "TransformControls") return;
+                clearObjects(scene);
 
-                    toRemove.push(obj);
-                });
-                
-                toRemove.forEach(obj => {
-                    scene.remove(obj);
-                });
+                for (const item of data) {
+                    const geometry = createGeometry(item.type);
+                    if (!geometry) continue;
 
-                // পুরোনো অবজেক্টের মেমোরি ও লিস্ট ক্লিয়ার করো
-                clearObjects();
+                    const materialData = Array.isArray(item.materials) && item.materials.length
+                        ? item.materials
+                        : [{ color: 0xffffff }];
 
-                // ==================================
-                // Recreate Saved Objects
-                // ==================================
-                objects.forEach(data => {
+                    const materials = materialData.map(material => new THREE.MeshStandardMaterial({
+                        color: material.color ?? 0xffffff,
+                        metalness: material.metalness ?? 0,
+                        roughness: material.roughness ?? 1,
+                        opacity: material.opacity ?? 1,
+                        transparent: material.transparent ?? false,
+                        wireframe: material.wireframe ?? false,
+                        side: THREE.DoubleSide
+                    }));
 
-                    let geometry = null;
-
-                    switch (data.type) {
-
-                        case "BoxGeometry":
-                            geometry = new THREE.BoxGeometry();
-                            break;
-
-                        case "SphereGeometry":
-                            geometry = new THREE.SphereGeometry(0.5, 32, 32);
-                            break;
-
-                        case "CylinderGeometry":
-                            geometry = new THREE.CylinderGeometry(0.5, 0.5, 2, 32);
-                            break;
-
-                        case "ConeGeometry":
-                            geometry = new THREE.ConeGeometry(0.5, 1.5, 32);
-                            break;
-
-                        case "PlaneGeometry":
-                            geometry = new THREE.PlaneGeometry(5, 5);
-                            break;
-
-                        case "OctahedronGeometry":
-                            geometry = new THREE.OctahedronGeometry(0.5);
-                            break;
-
-                        case "TorusGeometry":
-                            geometry = new THREE.TorusGeometry(0.5, 0.2, 16, 100);
-                            break;
-
-                        default:
-                            console.warn("Unsupported geometry:", data.type);
-                            return;
-                    }
-
-                    // ==============================
-                    // Create Materials
-                    // ==============================
-                    const materials = (data.materials || []).map(mat =>
-                        new THREE.MeshStandardMaterial({
-                            color: mat.color ?? 0xffffff,
-                            metalness: mat.metalness ?? 0,
-                            roughness: mat.roughness ?? 1,
-                            opacity: mat.opacity ?? 1,
-                            transparent: mat.transparent ?? false,
-                            wireframe: mat.wireframe ?? false,
-                            side: THREE.DoubleSide
-                        })
-                    );
-
-                    const material =
-                        materials.length === 0
-                            ? new THREE.MeshStandardMaterial({
-                                color: 0xffffff
-                            })
-                            : materials.length === 1
-                                ? materials[0]
-                                : materials;
-
-                    // ==============================
-                    // Create Mesh
-                    // ==============================
-                    const mesh = new THREE.Mesh(geometry, material);
-                    mesh.name = data.name || "Object";
-
-                    // Restore Transform
-                    mesh.position.set(
-                        data.position?.x ?? 0,
-                        data.position?.y ?? 0,
-                        data.position?.z ?? 0
-                    );
-
-                    mesh.rotation.set(
-                        data.rotation?.x ?? 0,
-                        data.rotation?.y ?? 0,
-                        data.rotation?.z ?? 0
-                    );
-
-                    mesh.scale.set(
-                        data.scale?.x ?? 1,
-                        data.scale?.y ?? 1,
-                        data.scale?.z ?? 1
-                    );
-
-                    mesh.visible = data.visible ?? true;
-
-                    // Shadow
+                    const mesh = new THREE.Mesh(geometry, materials.length === 1 ? materials[0] : materials);
+                    mesh.name = item.name || "Object";
+                    mesh.position.set(item.position?.x ?? 0, item.position?.y ?? 0, item.position?.z ?? 0);
+                    mesh.rotation.set(item.rotation?.x ?? 0, item.rotation?.y ?? 0, item.rotation?.z ?? 0);
+                    mesh.scale.set(item.scale?.x ?? 1, item.scale?.y ?? 1, item.scale?.z ?? 1);
+                    mesh.visible = item.visible ?? true;
                     mesh.castShadow = true;
                     mesh.receiveShadow = true;
-
-                    // Selection এর জন্য
                     mesh.userData.selectable = true;
-
-                    // Scene এ add করো এবং objectManager ও Hierarchy-তে আপডেট করো
+                    mesh.userData.editorObject = true;
                     addObject(scene, mesh);
-                    addToHierarchy(mesh);
-                });
+                }
 
-                console.log("Scene Loaded Successfully");
-
+                rebuildHierarchy();
+                window.dispatchEvent(new CustomEvent("editor:status", { detail: `Loaded ${data.length} objects` }));
             } catch (error) {
                 console.error("Load failed:", error);
-                alert("Invalid scene.json file");
+                window.dispatchEvent(new CustomEvent("editor:status", { detail: "Invalid scene file" }));
             }
         };
-
         reader.readAsText(file);
-    });
+        input.value = "";
+    }, { once: true });
 
-    // File picker open করো
     input.click();
+}
+
+function createGeometry(type) {
+    switch (type) {
+        case "BoxGeometry": return new THREE.BoxGeometry(1, 1, 1);
+        case "SphereGeometry": return new THREE.SphereGeometry(0.5, 32, 20);
+        case "CylinderGeometry": return new THREE.CylinderGeometry(0.5, 0.5, 2, 32);
+        case "ConeGeometry": return new THREE.ConeGeometry(0.5, 1.5, 32);
+        case "PlaneGeometry": return new THREE.PlaneGeometry(5, 5);
+        case "OctahedronGeometry": return new THREE.OctahedronGeometry(0.5);
+        case "TorusGeometry": return new THREE.TorusGeometry(0.5, 0.2, 16, 64);
+        default: return null;
+    }
 }
