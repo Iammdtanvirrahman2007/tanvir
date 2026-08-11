@@ -1,0 +1,28 @@
+{
+  "name": "ModelForge 3D",
+  "short_name": "ModelForge",
+  "description": "ModelForge 3D browser-based modeling editor by Md. Tanvir Rahman.",
+  "id": "/tanvir/",
+  "start_url": "/tanvir/",
+  "scope": "/tanvir/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#0f1014",
+  "theme_color": "#17181c",
+  "lang": "en",
+  "categories": ["design", "graphics", "productivity"],
+  "icons": [
+    {
+      "src": "icons/model-forge-192.svg",
+      "sizes": "192x192",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "icons/model-forge-512.svg",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
