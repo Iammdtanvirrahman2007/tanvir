@@ -1,198 +1,60 @@
 import { exportScene } from "./exporter.js";
 
-// ==========================================
-// Export Rocket Part (.rkp)
-// ==========================================
-
 export function setupUpload(scene) {
-
-    const uploadBtn =
-        document.getElementById("uploadBtn");
-
+    const uploadBtn = document.getElementById("uploadBtn");
     if (!uploadBtn) return;
 
     uploadBtn.onclick = async () => {
-
         try {
-
-            console.log("========== Export Rocket Part ==========");
-
-            // ==================================
-            // Export GLTF
-            // ==================================
-
-            const gltf =
-                await exportScene(scene);
-
-            // ==================================
-            // Collect Parts
-            // ==================================
-
+            const gltf = await exportScene(scene);
             const parts = [];
 
             scene.traverse(object => {
-
-                if (
-                    object.userData.selectable === true
-                ) {
-
-                    parts.push({
-
-                        uuid: object.uuid,
-
-                        name:
-                            object.name || "Unnamed",
-
-                        type:
-                            object.userData.partType ||
-                            "Unknown",
-
-                        category:
-                            object.userData.category ||
-                            "Default",
-
-                        manufacturer:
-                            object.userData.manufacturer ||
-                            "",
-
-                        mass:
-                            object.userData.mass ?? 1,
-
-                        description:
-                            object.userData.description ||
-                            "",
-
-                        version:
-                            object.userData.version ||
-                            "1.0",
-
-                        position:
-                            object.position.toArray(),
-
-                        rotation: [
-
-                            object.rotation.x,
-                            object.rotation.y,
-                            object.rotation.z
-
-                        ],
-
-                        scale:
-                            object.scale.toArray()
-
-                    });
-
-                }
-
+                if (object.userData?.selectable !== true) return;
+                parts.push({
+                    uuid: object.uuid,
+                    name: object.name || "Unnamed",
+                    type: object.userData.partType || "Unknown",
+                    category: object.userData.category || "Default",
+                    manufacturer: object.userData.manufacturer || "",
+                    mass: object.userData.mass ?? 1,
+                    description: object.userData.description || "",
+                    version: object.userData.version || "1.0",
+                    position: object.position.toArray(),
+                    rotation: [object.rotation.x, object.rotation.y, object.rotation.z],
+                    scale: object.scale.toArray()
+                });
             });
 
-            // ==================================
-            // Rocket Part Package
-            // ==================================
-
+            const metadata = parts[0] || {};
             const rocketPart = {
-
                 format: "RocketPart",
-
                 version: 1,
-
-                created:
-                    new Date().toISOString(),
-
+                created: new Date().toISOString(),
                 metadata: {
-
-                    name:
-                        parts[0]?.name ||
-                        "Unnamed",
-
-                    type:
-                        parts[0]?.type ||
-                        "Unknown",
-
-                    category:
-                        parts[0]?.category ||
-                        "Default",
-
-                    manufacturer:
-                        parts[0]?.manufacturer ||
-                        "",
-
-                    mass:
-                        parts[0]?.mass ??
-                        1,
-
-                    description:
-                        parts[0]?.description ||
-                        "",
-
-                    version:
-                        parts[0]?.version ||
-                        "1.0"
-
+                    name: metadata.name || "Unnamed",
+                    type: metadata.type || "Unknown",
+                    category: metadata.category || "Default",
+                    manufacturer: metadata.manufacturer || "",
+                    mass: metadata.mass ?? 1,
+                    description: metadata.description || "",
+                    version: metadata.version || "1.0"
                 },
-
                 parts,
-
                 gltf
-
             };
 
-            // ==================================
-            // Download
-            // ==================================
-
-            const json =
-                JSON.stringify(
-                    rocketPart,
-                    null,
-                    2
-                );
-
-            const blob =
-                new Blob(
-                    [json],
-                    {
-                        type:
-                            "application/json"
-                    }
-                );
-
-            const url =
-                URL.createObjectURL(blob);
-
-            const link =
-                document.createElement("a");
-
+            const blob = new Blob([JSON.stringify(rocketPart, null, 2)], { type: "application/json" });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement("a");
             link.href = url;
-
-            link.download =
-                (
-                    rocketPart.metadata.name ||
-                    "RocketPart"
-                ) + ".rkp";
-
+            link.download = `${metadata.name || "RocketPart"}.rkp`;
             link.click();
-
             URL.revokeObjectURL(url);
-
-            console.log("Rocket Part Exported");
-
-            alert(
-                "Rocket Part Downloaded 🚀"
-            );
-
+            window.dispatchEvent(new CustomEvent("editor:status", { detail: "Rocket part exported" }));
+        } catch (error) {
+            console.error("Rocket part export failed:", error);
+            window.dispatchEvent(new CustomEvent("editor:status", { detail: "Rocket part export failed" }));
         }
-
-        catch (err) {
-
-            console.error(err);
-
-            alert(
-                "Export Failed ❌"
-            );
-
-        }
-
     };
-
 }
