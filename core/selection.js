@@ -15,6 +15,9 @@ let boxStart = null;
 let boxElement = null;
 let boxDragging = false;
 let groupSyncInstalled = false;
+let pointerStart = null;
+let pointerMoved = false;
+let pointerDownTarget = null;
 let lastTouchTap = 0;
 let lastTouchPoint = null;
 
@@ -45,10 +48,7 @@ export function selectObject(object, options = {}) {
 
     selected = object;
     setMultiSelection([object]);
-    attachTransform(object);
-    highlight(object);
-    updateInspector(object);
-    setActiveHierarchy(object);
+    applySelectionVisuals([object]);
     window.dispatchEvent(new CustomEvent("editor:selection-change", { detail: [object] }));
 }
 
@@ -95,33 +95,41 @@ export function setupSelection(renderer, camera, scene) {
         const tc = getTransform();
         if (event.button !== 0 || isDraggingTransform() || tc?.axis) return;
 
-        if (event.shiftKey && event.pointerType !== "touch") {
-            startBoxSelection(event, camera);
-            return;
-        }
+        pointerStart = { x: event.clientX, y: event.clientY, pointerId: event.pointerId };
+        pointerMoved = false;
+        pointerDownTarget = pick(event, camera, scene);
 
-        const target = pick(event, camera, scene);
-        if (!target) {
-            if (!(event.ctrlKey || event.metaKey)) clearSelection();
-            return;
+        if (event.shiftKey && event.pointerType !== "touch") {
+            startBoxSelection(event);
+            pointerMoved = true;
         }
-        selectObject(target, { toggle: event.ctrlKey || event.metaKey });
     }, { passive: true });
 
-    canvas.addEventListener("dblclick", event => {
-        const target = pickDeep(event, camera, scene);
-        if (!target) return;
-        if (consumeFocusTarget(target)) return;
-        focusObject(target, { duration: 360 });
-        window.dispatchEvent(new CustomEvent("editor:status", { detail: `Focused ${target.name || target.type}` }));
+    canvas.addEventListener("pointermove", event => {
+        if (pointerStart && event.pointerId === pointerStart.pointerId) {
+            if (Math.hypot(event.clientX - pointerStart.x, event.clientY - pointerStart.y) > 5) pointerMoved = true;
+        }
+        if (boxDragging && boxStart) updateBox(event);
     }, { passive: true });
 
     canvas.addEventListener("pointerup", event => {
         if (boxDragging) {
             finishBoxSelection(event, camera, scene);
+            resetPointerState();
             return;
         }
-        if (event.pointerType === "touch") {
+
+        if (pointerStart && event.pointerId === pointerStart.pointerId && !pointerMoved) {
+            const target = pick(event, camera, scene) || pointerDownTarget;
+            if (target) {
+                const toggle = event.ctrlKey || event.metaKey;
+                selectObject(target, { toggle });
+            } else if (!(event.ctrlKey || event.metaKey)) {
+                clearSelection();
+            }
+        }
+
+        if (event.pointerType === "touch" && !pointerMoved) {
             const now = performance.now();
             const point = { x: event.clientX, y: event.clientY };
             const closeEnough = lastTouchPoint && Math.hypot(point.x - lastTouchPoint.x, point.y - lastTouchPoint.y) < 28;
@@ -140,14 +148,28 @@ export function setupSelection(renderer, camera, scene) {
                 lastTouchPoint = point;
             }
         }
+        resetPointerState();
     }, { passive: true });
 
-    canvas.addEventListener("pointermove", event => {
-        if (!boxDragging || !boxStart) return;
-        updateBox(event);
+    canvas.addEventListener("pointercancel", () => {
+        cancelBoxSelection();
+        resetPointerState();
     }, { passive: true });
 
-    canvas.addEventListener("pointercancel", cancelBoxSelection);
+    canvas.addEventListener("dblclick", event => {
+        if (event.pointerType === "touch") return;
+        const target = pickDeep(event, camera, scene);
+        if (!target) return;
+        if (consumeFocusTarget(target)) return;
+        focusObject(target, { duration: 360 });
+        window.dispatchEvent(new CustomEvent("editor:status", { detail: `Focused ${target.name || target.type}` }));
+    }, { passive: true });
+}
+
+function resetPointerState() {
+    pointerStart = null;
+    pointerMoved = false;
+    pointerDownTarget = null;
 }
 
 function installGroupSelectionSync() {
@@ -168,22 +190,39 @@ function pick(event, camera, scene) {
 }
 
 function pickDeep(event, camera, scene) {
-    const hit = raycast(event, camera, scene);
-    if (!hit) return null;
-    let current = hit.object;
-    while (current && current !== scene) {
-        if (current.userData?.editorObject && !current.userData?.editorOnly && (current.isMesh || current.userData?.selectable === true)) return current;
-        current = current.parent;
+    const hits = raycastAll(event, camera, scene);
+    for (const hit of hits) {
+        let current = hit.object;
+        while (current && current !== scene) {
+            if (current.userData?.editorObject && !current.userData?.editorOnly && (current.isMesh || current.userData?.selectable === true)) return current;
+            current = current.parent;
+        }
     }
-    return findSelectableRoot(hit.object, scene);
+    return null;
 }
 
 function raycast(event, camera, scene) {
+    return raycastAll(event, camera, scene)[0] || null;
+}
+
+function raycastAll(event, camera, scene) {
+    if (!selectionCanvas) return [];
     const rect = selectionCanvas.getBoundingClientRect();
+    if (!rect.width || !rect.height) return [];
     mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
     mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
     raycaster.setFromCamera(mouse, camera);
-    return raycaster.intersectObjects(scene.children, true)[0] || null;
+    const hits = raycaster.intersectObjects(scene.children, true);
+    return hits.filter(hit => !isEditorOnlyHit(hit.object));
+}
+
+function isEditorOnlyHit(object) {
+    let current = object;
+    while (current) {
+        if (current.userData?.editorOnly) return true;
+        current = current.parent;
+    }
+    return false;
 }
 
 function startBoxSelection(event) {
