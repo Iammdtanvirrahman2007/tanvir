@@ -1,10 +1,10 @@
 import * as THREE from "three";
-import { createCamera } from "./camera.js";
-import { createRenderer } from "./renderer.js";
-import { createControls } from "./controls.js";
-import { createLights } from "./lights.js";
-import { createGrid } from "./grid.js";
-import { addObject } from "./objectManager.js";
+import { createCamera } from "./camera.js?v=20260811-runtime-fix";
+import { createRenderer } from "./renderer.js?v=20260811-runtime-fix";
+import { createControls } from "./controls.js?v=20260811-runtime-fix";
+import { createLights } from "./lights.js?v=20260811-runtime-fix";
+import { createGrid } from "./grid.js?v=20260811-runtime-fix";
+import { addObject } from "./objectManager.js?v=20260811-runtime-fix";
 
 export let controls;
 export let scene;
@@ -28,8 +28,7 @@ export function initScene(editor = null) {
 
     camera = createCamera();
     renderer = createRenderer();
-    // WebGLRenderer does not expose Object3D.userData. Keep the editor-only
-    // pixel-ratio value on the renderer instance itself instead.
+    if (!renderer) throw new Error("ModelForge: renderer initialization failed.");
     renderer.targetPixelRatio = Math.min(window.devicePixelRatio || 1, 2);
     app.replaceChildren(renderer.domElement);
 
