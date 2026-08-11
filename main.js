@@ -14,6 +14,7 @@ import { setupSelection, clearSelection, getSelected } from "./core/selection.js
 import { addObject, getObjects } from "./core/objectManager.js";
 import { addToHierarchy, initHierarchy, rebuildHierarchy } from "./ui/hierarchy.js";
 import { initInspector, updateInspector } from "./ui/inspector.js";
+import { initSetFocusControl } from "./ui/setFocusControl.js";
 import { initMaterialLibrary } from "./core/materialLibrary.js";
 import { initMaterialLibraryPanel } from "./ui/materialLibraryPanel.js";
 import { createObject } from "./objects/factory.js";
@@ -23,7 +24,7 @@ const state = { transformMode: "translate", lastStatus: "Ready", mobileSheet: nu
 boot();
 
 function boot() {
-    installAdaptiveStyles(); initScene(); setupTransform(camera, renderer, scene, controls); setupSelection(renderer, camera, scene); initInspector(); initMaterialLibrary(); initHierarchy(scene); setupDelete(scene); setupDuplicate(scene); setupCopyPaste(scene); setupImporter(scene); setupExporter(scene); setupUpload(scene);
+    installAdaptiveStyles(); initScene(); setupTransform(camera, renderer, scene, controls); setupSelection(renderer, camera, scene); initInspector(); initSetFocusControl(); initMaterialLibrary(); initHierarchy(scene); setupDelete(scene); setupDuplicate(scene); setupCopyPaste(scene); setupImporter(scene); setupExporter(scene); setupUpload(scene);
     const defaultCube = createDefaultCube(); addToHierarchy(defaultCube); updateInspector(null); bindUI(); bindEditorEvents(); bindKeyboard(); bindResponsiveLayer(); requestAnimationFrame(() => initMaterialLibraryPanel()); updateObjectCount(); updateHistoryButtons(); setStatus("Ready");
 }
 
