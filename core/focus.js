@@ -1,5 +1,8 @@
 import * as THREE from "three";
-import { camera, controls } from "./scene.js";
+// IMPORTANT: use the exact same scene module URL as main.js.
+// A query-string mismatch would create a second ES-module instance,
+// leaving focus.js with an uninitialized camera/controls binding.
+import { camera, controls } from "./scene.js?v=20260811-runtime-fix";
 import { attachTransformPivot, attachTransform, hasTransformPivot } from "./transform.js";
 
 let pendingGroup = null;
@@ -174,9 +177,6 @@ function getFocusBounds(object) {
         return { center, radius: Math.max(sphere.radius, 0.25) };
     }
 
-    // Some ModelForge scene/group wrapper objects have no direct geometry.
-    // They are still valid focus targets, so fall back to their world position
-    // instead of reporting "Unable to focus selected object".
     const center = object.getWorldPosition(new THREE.Vector3());
     let radius = 0.5;
 
