@@ -80,15 +80,14 @@ function buildMaterialSection(object) {
     const actions = document.createElement("div"); actions.className = "inspector-actions";
     actions.append(
         actionButton("Copy", () => { const m = materials[Number(slot.value)]; clipboardMaterial = cloneMaterialState(m); status("Material copied"); }),
-        actionButton("Paste", () => { const m = materials[Number(slot.value)]; if (!clipboardMaterial) return status("Material clipboard is empty"); const before = cloneMaterialState(m); applyMaterialState(m, clipboardMaterial); pushMaterialHistory(m, before, clipboardMaterial, "Paste material"); refreshInspector(); status("Material pasted"); }),
-        actionButton("Reset", () => { const m = materials[Number(slot.value)]; const before = cloneMaterialState(m); const target = presetState(m.userData?.materialPreset || "Custom"); applyMaterialState(m, target); pushMaterialHistory(m, before, target, "Reset material"); refreshInspector(); status("Material reset"); })
+        actionButton("Paste", () => { const m = materials[Number(slot.value)]; if (!clipboardMaterial) return status("Material clipboard is empty"); const before = cloneMaterialState(m); applyMaterialState(m, clipboardMaterial); pushMaterialHistory(m, before, cloneMaterialState(m), "Paste material"); refreshInspector(); status("Material pasted"); }),
+        actionButton("Reset", () => { const m = materials[Number(slot.value)]; const before = cloneMaterialState(m); const target = presetState(m.userData?.materialPreset || "Custom"); applyMaterialState(m, target); pushMaterialHistory(m, before, cloneMaterialState(m), "Reset material"); refreshInspector(); status("Material reset"); })
     );
     body.appendChild(actions);
 
     const presetRow = document.createElement("div"); presetRow.className = "property-row"; const presetLabel = document.createElement("label"); presetLabel.textContent = "Preset";
     const preset = document.createElement("select"); preset.className = "property-select";
     ["Custom", "Matte", "Metal", "Plastic", "Glass", "Glow"].forEach(name => { const option = document.createElement("option"); option.value = name; option.textContent = name; preset.appendChild(option); });
-    preset.value = mPreset(materials[0]) || "Custom";
     presetRow.append(presetLabel, preset); body.appendChild(presetRow);
 
     const editor = document.createElement("div"); editor.style.marginTop = "8px"; body.appendChild(editor);
@@ -96,6 +95,7 @@ function buildMaterialSection(object) {
         editor.replaceChildren();
         const material = materials[Number(slot.value)];
         if (!material) return;
+        preset.value = mPreset(material);
         addColor(editor, material);
         addRange(editor, "Metalness", material.metalness ?? 0, 0, 1, value => { material.metalness = value; material.needsUpdate = true; markCustom(material); });
         addRange(editor, "Roughness", material.roughness ?? 1, 0, 1, value => { material.roughness = value; material.needsUpdate = true; markCustom(material); });
@@ -103,82 +103,35 @@ function buildMaterialSection(object) {
         addRange(editor, "Emission Power", material.emissiveIntensity ?? 1, 0, 20, value => { material.emissiveIntensity = value; material.needsUpdate = true; markCustom(material); });
         addRange(editor, "Opacity", material.opacity ?? 1, 0, 1, value => { material.opacity = value; material.transparent = value < 1; material.depthWrite = value >= 1; material.needsUpdate = true; markCustom(material); });
         addSelect(editor, "Side", [["Front", THREE.FrontSide], ["Back", THREE.BackSide], ["Double", THREE.DoubleSide]], material.side, value => { material.side = Number(value); material.needsUpdate = true; markCustom(material); });
-        const wire = field("Wireframe", "checkbox", material.wireframe); wire.input.checked = material.wireframe; wire.input.addEventListener("change", () => { const before = cloneMaterialState(material); material.wireframe = wire.input.checked; material.needsUpdate = true; const after = cloneMaterialState(material); pushMaterialHistory(material, before, after, "Toggle wireframe"); markCustom(material); }); editor.appendChild(wire.row);
-        const flat = field("Flat Shading", "checkbox", material.flatShading); flat.input.checked = !!material.flatShading; flat.input.addEventListener("change", () => { const before = cloneMaterialState(material); material.flatShading = flat.input.checked; material.needsUpdate = true; const after = cloneMaterialState(material); pushMaterialHistory(material, before, after, "Toggle flat shading"); markCustom(material); }); editor.appendChild(flat.row);
+        const wire = field("Wireframe", "checkbox", material.wireframe); wire.input.checked = material.wireframe; wire.input.addEventListener("change", () => { const before = cloneMaterialState(material); material.wireframe = wire.input.checked; material.needsUpdate = true; markCustom(material); const after = cloneMaterialState(material); pushMaterialHistory(material, before, after, "Toggle wireframe"); }); editor.appendChild(wire.row);
+        const flat = field("Flat Shading", "checkbox", material.flatShading); flat.input.checked = !!material.flatShading; flat.input.addEventListener("change", () => { const before = cloneMaterialState(material); material.flatShading = flat.input.checked; material.needsUpdate = true; markCustom(material); const after = cloneMaterialState(material); pushMaterialHistory(material, before, after, "Toggle flat shading"); }); editor.appendChild(flat.row);
         const textureRow = document.createElement("div"); textureRow.style.display = "flex"; textureRow.style.gap = "6px";
         const texture = document.createElement("label"); texture.className = "file-input-label"; texture.textContent = material.map ? "Replace Base Texture" : "Load Base Texture";
         const input = document.createElement("input"); input.type = "file"; input.accept = ".png,.jpg,.jpeg,.webp"; input.hidden = true; input.addEventListener("change", () => loadTexture(input.files?.[0], material)); texture.appendChild(input);
         const clear = actionButton("Clear", () => { const before = cloneMaterialState(material); material.map?.dispose?.(); material.map = null; delete material.userData.baseTextureData; material.needsUpdate = true; const after = cloneMaterialState(material); pushMaterialHistory(material, before, after, "Clear texture"); refreshInspector(); });
         textureRow.append(texture, clear); editor.appendChild(textureRow);
     };
-    preset.addEventListener("change", () => { const m = materials[Number(slot.value)]; if (preset.value === "Custom") { markCustom(m); return; } const before = cloneMaterialState(m); const next = presetState(preset.value); applyMaterialState(m, next); m.userData.materialPreset = preset.value; pushMaterialHistory(m, before, next, `Apply ${preset.value}`); render(); status(`${preset.value} material applied`); });
+    preset.addEventListener("change", () => { const m = materials[Number(slot.value)]; if (preset.value === "Custom") { markCustom(m); return; } const before = cloneMaterialState(m); applyMaterialState(m, presetState(preset.value)); markCustom(m); m.userData.materialPreset = preset.value; const after = cloneMaterialState(m); pushMaterialHistory(m, before, after, `Apply ${preset.value}`); render(); status(`${preset.value} material applied`); });
     slot.addEventListener("change", render); render(); return section("Material", body);
 }
 
-function addColor(parent, material) {
-    const row = addColorField(parent, "Color", material.color, color => { material.color.set(color); material.needsUpdate = true; markCustom(material); });
-    return row;
-}
-
-function addColorField(parent, label, initialColor, onChange) {
-    const row = field(label, "color", `#${initialColor.getHexString()}`);
-    let before = null;
-    row.input.addEventListener("focus", () => { if (row.input.type === "color") before = cloneMaterialStateForColor(initialColor); });
-    row.input.addEventListener("input", () => onChange(row.input.value));
-    parent.appendChild(row.row);
-    return row;
-}
-
-function addSelect(parent, label, options, initial, onChange) {
-    const row = document.createElement("div"); row.className = "property-row"; const caption = document.createElement("label"); caption.textContent = label; const select = document.createElement("select"); select.className = "property-select";
-    options.forEach(([name, value]) => { const option = document.createElement("option"); option.value = value; option.textContent = name; option.selected = value === initial; select.appendChild(option); }); select.addEventListener("change", () => onChange(select.value)); row.append(caption, select); parent.appendChild(row);
-}
-
-function addRange(parent, label, initial, min, max, onChange) {
-    const row = document.createElement("div"); row.className = "property-row";
-    row.innerHTML = `<label>${label}</label><div class="range-row"><input type="range" min="${min}" max="${max}" step="0.01"><input class="range-value" type="number" min="${min}" max="${max}" step="0.01"></div>`;
-    const range = row.querySelector("input[type=range]"), value = row.querySelector("input[type=number]");
-    const clamp = n => Math.min(max, Math.max(min, Number.isFinite(n) ? n : min));
-    const current = clamp(Number(initial)); range.value = current; value.value = current.toFixed(2);
-    let before = null;
-    const begin = () => { if (!before) before = cloneCurrentMaterialState(onChange); };
-    range.addEventListener("pointerdown", () => { before = null; });
-    range.addEventListener("input", () => { value.value = Number(range.value).toFixed(2); onChange(Number(range.value)); });
-    range.addEventListener("change", () => { if (before) { const after = findMaterialStateFromRow(onChange); if (after) pushMaterialHistory(after.material, before, after.state, label); } before = null; });
-    value.addEventListener("focus", () => { before = null; });
-    value.addEventListener("change", () => { const n = clamp(Number(value.value)); const material = getMaterialFromCallback(onChange); const old = material ? cloneMaterialState(material) : null; range.value = n; value.value = n.toFixed(2); onChange(n); if (material && old) pushMaterialHistory(material, old, cloneMaterialState(material), label); });
-    parent.appendChild(row);
-}
-
-function cloneCurrentMaterialState() { return null; }
-function findMaterialStateFromRow() { return null; }
-function getMaterialFromCallback() { return null; }
-
+function addColor(parent, material) { addColorField(parent, "Color", material.color, color => { material.color.set(color); material.needsUpdate = true; markCustom(material); }); }
+function addColorField(parent, label, initialColor, onChange) { const row = field(label, "color", `#${initialColor.getHexString()}`); row.input.addEventListener("input", () => onChange(row.input.value)); parent.appendChild(row.row); return row; }
+function addSelect(parent, label, options, initial, onChange) { const row = document.createElement("div"); row.className = "property-row"; const caption = document.createElement("label"); caption.textContent = label; const select = document.createElement("select"); select.className = "property-select"; options.forEach(([name, value]) => { const option = document.createElement("option"); option.value = value; option.textContent = name; option.selected = value === initial; select.appendChild(option); }); select.addEventListener("change", () => onChange(select.value)); row.append(caption, select); parent.appendChild(row); }
+function addRange(parent, label, initial, min, max, onChange) { const row = document.createElement("div"); row.className = "property-row"; row.innerHTML = `<label>${label}</label><div class="range-row"><input type="range" min="${min}" max="${max}" step="0.01"><input class="range-value" type="number" min="${min}" max="${max}" step="0.01"></div>`; const range = row.querySelector("input[type=range]"), value = row.querySelector("input[type=number]"); const clamp = n => Math.min(max, Math.max(min, Number.isFinite(n) ? n : min)); const current = clamp(Number(initial)); range.value = current; value.value = current.toFixed(2); range.addEventListener("input", () => { value.value = Number(range.value).toFixed(2); onChange(Number(range.value)); }); value.addEventListener("change", () => { const n = clamp(Number(value.value)); range.value = n; value.value = n.toFixed(2); onChange(n); }); parent.appendChild(row); }
 function actionButton(label, onClick) { const button = document.createElement("button"); button.className = "icon-action"; button.type = "button"; button.textContent = label; button.addEventListener("click", onClick); return button; }
 function cloneMaterialState(m) { return { color: m.color?.getHex() ?? 0xffffff, metalness: m.metalness ?? 0, roughness: m.roughness ?? 1, opacity: m.opacity ?? 1, transparent: !!m.transparent, depthWrite: m.depthWrite ?? true, wireframe: !!m.wireframe, flatShading: !!m.flatShading, side: m.side ?? THREE.FrontSide, emissive: m.emissive?.getHex() ?? 0, emissiveIntensity: m.emissiveIntensity ?? 1, baseTextureData: m.userData?.baseTextureData || null, materialPreset: m.userData?.materialPreset || "Custom" }; }
-function cloneMaterialStateForColor(color) { return color?.getHex?.() ?? 0xffffff; }
-function applyMaterialState(m, state) { if (m.color) m.color.setHex(state.color ?? 0xffffff); if (m.emissive) m.emissive.setHex(state.emissive ?? 0); m.metalness = state.metalness ?? 0; m.roughness = state.roughness ?? 1; m.opacity = state.opacity ?? 1; m.transparent = !!state.transparent || m.opacity < 1; m.depthWrite = state.depthWrite ?? (m.opacity >= 1); m.wireframe = !!state.wireframe; m.flatShading = !!state.flatShading; m.side = state.side ?? THREE.FrontSide; m.emissiveIntensity = state.emissiveIntensity ?? 1; m.userData = { ...(m.userData || {}) }; if (state.materialPreset) m.userData.materialPreset = state.materialPreset; if (state.baseTextureData) { m.userData.baseTextureData = state.baseTextureData; restoreTexture(m, state.baseTextureData); } else { m.map?.dispose?.(); m.map = null; delete m.userData.baseTextureData; } m.needsUpdate = true; }
+function applyMaterialState(m, state) { if (m.color) m.color.setHex(state.color ?? 0xffffff); if (m.emissive) m.emissive.setHex(state.emissive ?? 0); m.metalness = state.metalness ?? 0; m.roughness = state.roughness ?? 1; m.opacity = state.opacity ?? 1; m.transparent = !!state.transparent || m.opacity < 1; m.depthWrite = state.depthWrite ?? (m.opacity >= 1); m.wireframe = !!state.wireframe; m.flatShading = !!state.flatShading; m.side = state.side ?? THREE.FrontSide; m.emissiveIntensity = state.emissiveIntensity ?? 1; m.userData = { ...(m.userData || {}) }; m.userData.materialPreset = state.materialPreset || "Custom"; if (state.baseTextureData) { m.userData.baseTextureData = state.baseTextureData; restoreTexture(m, state.baseTextureData); } else { m.map?.dispose?.(); m.map = null; delete m.userData.baseTextureData; } m.needsUpdate = true; dispatchMaterialChange(m); }
 function pushMaterialHistory(material, before, after, label) { if (!material || !before || !after || JSON.stringify(before) === JSON.stringify(after)) return; pushHistory({ label, undo: () => { applyMaterialState(material, before); refreshInspector(); }, redo: () => { applyMaterialState(material, after); refreshInspector(); } }); }
 function defaultMaterialState() { return { color: 0xffffff, metalness: 0, roughness: 1, opacity: 1, transparent: false, depthWrite: true, wireframe: false, flatShading: false, side: THREE.FrontSide, emissive: 0, emissiveIntensity: 1, baseTextureData: null, materialPreset: "Custom" }; }
 function presetState(name) { const states = { Matte: { color: 0x9da3ad, metalness: 0, roughness: 0.85, opacity: 1, transparent: false, depthWrite: true, wireframe: false, flatShading: false, side: THREE.FrontSide, emissive: 0, emissiveIntensity: 1, baseTextureData: null, materialPreset: "Matte" }, Metal: { color: 0xb8bec8, metalness: 1, roughness: 0.22, opacity: 1, transparent: false, depthWrite: true, wireframe: false, flatShading: false, side: THREE.FrontSide, emissive: 0, emissiveIntensity: 1, baseTextureData: null, materialPreset: "Metal" }, Plastic: { color: 0x626a78, metalness: 0.05, roughness: 0.32, opacity: 1, transparent: false, depthWrite: true, wireframe: false, flatShading: false, side: THREE.FrontSide, emissive: 0, emissiveIntensity: 1, baseTextureData: null, materialPreset: "Plastic" }, Glass: { color: 0xa9c9ff, metalness: 0, roughness: 0.05, opacity: 0.28, transparent: true, depthWrite: false, wireframe: false, flatShading: false, side: THREE.DoubleSide, emissive: 0, emissiveIntensity: 1, baseTextureData: null, materialPreset: "Glass" }, Glow: { color: 0x7aa2ff, metalness: 0.05, roughness: 0.18, opacity: 1, transparent: false, depthWrite: true, wireframe: false, flatShading: false, side: THREE.FrontSide, emissive: 0x6f8cff, emissiveIntensity: 2.5, baseTextureData: null, materialPreset: "Glow" } }; return states[name] || defaultMaterialState(); }
 function mPreset(material) { return material?.userData?.materialPreset || "Custom"; }
-function markCustom(material) { if (material) { material.userData = { ...(material.userData || {}), materialPreset: "Custom" }; } }
+function markCustom(material) { if (material) { material.userData = { ...(material.userData || {}), materialPreset: "Custom" }; dispatchMaterialChange(material); } }
+function dispatchMaterialChange(material) { window.dispatchEvent(new CustomEvent("editor:material-change", { detail: { material, object: currentObject } })); }
 function field(label, type, value, disabled = false) { const row = document.createElement("div"); row.className = "property-row"; const caption = document.createElement("label"); caption.textContent = label; const input = document.createElement("input"); input.className = "property-input"; input.type = type; input.disabled = disabled; if (type === "checkbox") input.checked = !!value; else input.value = value ?? ""; row.append(caption, input); return { row, input }; }
 function section(title, body) { const wrapper = document.createElement("section"); wrapper.className = "inspector-section"; const head = document.createElement("button"); head.className = "section-head"; head.innerHTML = `<span class="section-chevron">▾</span>${title}`; head.addEventListener("click", () => { body.hidden = !body.hidden; head.querySelector(".section-chevron").textContent = body.hidden ? "▸" : "▾"; }); wrapper.append(head, body); return wrapper; }
 function readAxis(object, property, axis, degrees) { const value = object[property][axis]; return degrees ? THREE.MathUtils.radToDeg(value) : value; }
 function formatValue(value, degrees) { return Number(value).toFixed(degrees ? 1 : 2); }
-function loadTexture(file, material) {
-    if (!file || !material) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-        const dataUrl = String(reader.result || "");
-        new THREE.TextureLoader().load(dataUrl, texture => {
-            texture.colorSpace = THREE.SRGBColorSpace; texture.flipY = false;
-            material.map?.dispose?.(); material.map = texture; material.userData = { ...(material.userData || {}), baseTextureData: dataUrl, materialPreset: "Custom" }; material.needsUpdate = true;
-            refreshInspector(); status("Base texture loaded");
-        });
-    };
-    reader.readAsDataURL(file);
-}
+function loadTexture(file, material) { if (!file || !material) return; const reader = new FileReader(); reader.onload = () => { const dataUrl = String(reader.result || ""); new THREE.TextureLoader().load(dataUrl, texture => { texture.colorSpace = THREE.SRGBColorSpace; texture.flipY = false; material.map?.dispose?.(); material.map = texture; material.userData = { ...(material.userData || {}), baseTextureData: dataUrl, materialPreset: "Custom" }; material.needsUpdate = true; dispatchMaterialChange(material); refreshInspector(); status("Base texture loaded"); }); }; reader.readAsDataURL(file); }
 function restoreTexture(material, dataUrl) { if (!dataUrl) return; try { new THREE.TextureLoader().load(dataUrl, texture => { texture.colorSpace = THREE.SRGBColorSpace; texture.flipY = false; material.map?.dispose?.(); material.map = texture; material.needsUpdate = true; }); } catch {} }
 function status(message) { window.dispatchEvent(new CustomEvent("editor:status", { detail: message })); }
