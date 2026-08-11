@@ -4,6 +4,7 @@ import { updateInspector } from "../ui/inspector.js";
 import { highlight, highlightMultiple, clearHighlight } from "./highlight.js";
 import { toggleMultiSelect, clearMultiSelection, getMultiSelection, setMultiSelection } from "./grouping.js";
 import { setActiveHierarchy, clearHierarchySelection } from "../ui/hierarchy.js";
+import { focusObject, consumeFocusTarget } from "./focus.js";
 
 const raycaster = new THREE.Raycaster();
 const mouse = new THREE.Vector2();
@@ -14,6 +15,8 @@ let boxStart = null;
 let boxElement = null;
 let boxDragging = false;
 let groupSyncInstalled = false;
+let lastTouchTap = 0;
+let lastTouchPoint = null;
 
 export function getSelected() { return selected; }
 export function getSelection() { return selected ? [selected] : getMultiSelection(); }
@@ -105,15 +108,45 @@ export function setupSelection(renderer, camera, scene) {
         selectObject(target, { toggle: event.ctrlKey || event.metaKey });
     }, { passive: true });
 
+    canvas.addEventListener("dblclick", event => {
+        const target = pickDeep(event, camera, scene);
+        if (!target) return;
+        if (consumeFocusTarget(target)) return;
+        focusObject(target, { duration: 360 });
+        window.dispatchEvent(new CustomEvent("editor:status", { detail: `Focused ${target.name || target.type}` }));
+    }, { passive: true });
+
+    canvas.addEventListener("pointerup", event => {
+        if (boxDragging) {
+            finishBoxSelection(event, camera, scene);
+            return;
+        }
+        if (event.pointerType === "touch") {
+            const now = performance.now();
+            const point = { x: event.clientX, y: event.clientY };
+            const closeEnough = lastTouchPoint && Math.hypot(point.x - lastTouchPoint.x, point.y - lastTouchPoint.y) < 28;
+            if (now - lastTouchTap < 330 && closeEnough) {
+                const target = pickDeep(event, camera, scene);
+                if (target) {
+                    if (!consumeFocusTarget(target)) {
+                        focusObject(target, { duration: 360 });
+                        window.dispatchEvent(new CustomEvent("editor:status", { detail: `Focused ${target.name || target.type}` }));
+                    }
+                }
+                lastTouchTap = 0;
+                lastTouchPoint = null;
+            } else {
+                lastTouchTap = now;
+                lastTouchPoint = point;
+            }
+        }
+    }, { passive: true });
+
     canvas.addEventListener("pointermove", event => {
         if (!boxDragging || !boxStart) return;
         updateBox(event);
     }, { passive: true });
 
-    canvas.addEventListener("pointerup", event => {
-        if (!boxDragging) return;
-        finishBoxSelection(event, camera, scene);
-    });
     canvas.addEventListener("pointercancel", cancelBoxSelection);
 }
 
@@ -130,16 +163,27 @@ function installGroupSelectionSync() {
 }
 
 function pick(event, camera, scene) {
+    const hit = raycast(event, camera, scene);
+    return hit ? findSelectableRoot(hit.object, scene) : null;
+}
+
+function pickDeep(event, camera, scene) {
+    const hit = raycast(event, camera, scene);
+    if (!hit) return null;
+    let current = hit.object;
+    while (current && current !== scene) {
+        if (current.userData?.editorObject && !current.userData?.editorOnly && (current.isMesh || current.userData?.selectable === true)) return current;
+        current = current.parent;
+    }
+    return findSelectableRoot(hit.object, scene);
+}
+
+function raycast(event, camera, scene) {
     const rect = selectionCanvas.getBoundingClientRect();
     mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
     mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
     raycaster.setFromCamera(mouse, camera);
-    const hits = raycaster.intersectObjects(scene.children, true);
-    for (const hit of hits) {
-        const target = findSelectableRoot(hit.object, scene);
-        if (target) return target;
-    }
-    return null;
+    return raycaster.intersectObjects(scene.children, true)[0] || null;
 }
 
 function startBoxSelection(event) {
