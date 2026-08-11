@@ -1,4 +1,4 @@
-import { renderer, controls, camera } from "./scene.js?v=20260811-runtime-fix";
+import { renderer, setRenderPixelRatio } from "./scene.js";
 
 const STORAGE_KEY = "modelforge:workspace:v2";
 const root = document.documentElement;
@@ -43,15 +43,7 @@ function installMobileDock() {
     if (document.getElementById("mobileActionDock")) return;
     const dock = document.createElement("div");
     dock.id = "mobileActionDock";
-    dock.innerHTML = `
-        <button data-action="scene"><b>☷</b><span>Scene</span></button>
-        <button data-action="add"><b>＋</b><span>Add</span></button>
-        <button data-action="select"><b>↖</b><span>Select</span></button>
-        <button data-action="move"><b>✥</b><span>Move</span></button>
-        <button data-action="rotate"><b>⟳</b><span>Rotate</span></button>
-        <button data-action="scale"><b>⌗</b><span>Scale</span></button>
-        <button data-action="inspector"><b>◇</b><span>Inspect</span></button>
-        <button data-action="more"><b>⋯</b><span>More</span></button>`;
+    dock.innerHTML = `<button data-action="scene"><b>☷</b><span>Scene</span></button><button data-action="add"><b>＋</b><span>Add</span></button><button data-action="select"><b>↖</b><span>Select</span></button><button data-action="move"><b>✥</b><span>Move</span></button><button data-action="rotate"><b>⟳</b><span>Rotate</span></button><button data-action="scale"><b>⌗</b><span>Scale</span></button><button data-action="inspector"><b>◇</b><span>Inspect</span></button><button data-action="more"><b>⋯</b><span>More</span></button>`;
     document.body.appendChild(dock);
     dock.addEventListener("click", event => {
         const action = event.target.closest("[data-action]")?.dataset.action;
@@ -95,8 +87,7 @@ function installQuality(profile) {
     if (!renderer) return;
     const ratios = { performance: 1, balanced: Math.min(window.devicePixelRatio || 1, 1.25), high: Math.min(window.devicePixelRatio || 1, 2) };
     const ratio = ratios[profile.performance] ?? 1;
-    renderer.targetPixelRatio = ratio;
-    renderer.setPixelRatio(ratio);
+    setRenderPixelRatio(ratio);
     renderer.domElement.style.imageRendering = "auto";
     renderer.shadowMap.enabled = profile.performance !== "performance";
 }
