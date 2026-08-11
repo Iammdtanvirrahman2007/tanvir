@@ -8,10 +8,54 @@ let animationFrame = 0;
 
 export function focusObject(object, options = {}) {
     if (!object || !camera || !controls) return false;
+
     object.updateMatrixWorld(true);
-    const center = new THREE.Box3().setFromObject(object).getCenter(new THREE.Vector3());
-    if (options.setPivotFor && options.setPivotFor !== object) attachTransformPivot(options.setPivotFor, center);
-    return focusPoint(center, object, options);
+    const box = new THREE.Box3().setFromObject(object);
+    if (box.isEmpty()) return false;
+
+    const center = box.getCenter(new THREE.Vector3());
+    const sphere = box.getBoundingSphere(new THREE.Sphere());
+
+    if (options.setPivotFor && options.setPivotFor !== object) {
+        attachTransformPivot(options.setPivotFor, center);
+    }
+
+    // A deterministic focus path is important for the Inspector button.
+    // Keep the current viewing direction, but choose a distance based on the
+    // selected object's actual world-space size.
+    const currentDirection = camera.position.clone().sub(controls.target);
+    if (currentDirection.lengthSq() < 0.000001) currentDirection.set(1, 0.7, 1);
+    currentDirection.normalize();
+
+    const radius = Math.max(sphere.radius, 0.25);
+    const distance = Math.max(radius * 3.2, 1.5);
+    const endPosition = center.clone().add(currentDirection.multiplyScalar(distance));
+    const duration = Math.max(0, Number(options.duration ?? 420));
+
+    cancelAnimationFrame(animationFrame);
+
+    if (!duration) {
+        camera.position.copy(endPosition);
+        controls.target.copy(center);
+        controls.update();
+        return true;
+    }
+
+    const startPosition = camera.position.clone();
+    const startTarget = controls.target.clone();
+    const start = performance.now();
+
+    const tick = now => {
+        const t = Math.min(1, (now - start) / duration);
+        const eased = 1 - Math.pow(1 - t, 3);
+        camera.position.lerpVectors(startPosition, endPosition, eased);
+        controls.target.lerpVectors(startTarget, center, eased);
+        controls.update();
+        if (t < 1) animationFrame = requestAnimationFrame(tick);
+    };
+
+    animationFrame = requestAnimationFrame(tick);
+    return true;
 }
 
 export function focusGroupAverage(group, options = {}) {
@@ -30,8 +74,6 @@ export function focusGroupAverage(group, options = {}) {
         new THREE.Box3().setFromObject(group).getCenter(average);
     }
 
-    // Store the exact world-space pivot so the group can keep using it until
-    // another pivot is explicitly chosen.
     group.userData.focusPoint = { x: average.x, y: average.y, z: average.z };
     group.userData.focusPointMode = "average";
     attachTransformPivot(group, average);
@@ -104,7 +146,8 @@ export function clearFocusPivot() {
     if (hasTransformPivot()) attachTransform(null);
 }
 
-function focusPoint(target, object, options) {
+function focusPoint(target, object, options = {}) {
+    if (!camera || !controls) return false;
     const duration = Math.max(0, Number(options.duration ?? 420));
     const offset = options.offset instanceof THREE.Vector3 ? options.offset.clone() : getCameraOffset(object);
     const endPosition = target.clone().add(offset);
