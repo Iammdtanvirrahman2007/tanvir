@@ -3,6 +3,7 @@ import { pushHistory } from "../core/history.js";
 
 let currentObject = null;
 let activeTab = "object";
+let clipboardMaterial = null;
 
 export function initInspector() {
     document.querySelectorAll(".inspector-tab").forEach(tab => tab.addEventListener("click", () => {
@@ -20,12 +21,10 @@ function renderInspector() {
     const panel = document.getElementById("inspectorContent");
     if (!panel) return;
     panel.replaceChildren();
-
     if (!currentObject) {
         panel.innerHTML = `<div class="empty-inspector"><div class="empty-icon">◇</div><strong>No object selected</strong><p>Select an object in the viewport or Scene panel to inspect its properties.</p></div>`;
         return;
     }
-
     panel.appendChild(activeTab === "material" ? buildMaterialSection(currentObject) : buildObjectSections(currentObject));
 }
 
@@ -36,191 +35,111 @@ function buildObjectSections(object) {
 }
 
 function buildIdentity(object) {
-    const body = document.createElement("div");
-    body.className = "section-body";
+    const body = document.createElement("div"); body.className = "section-body";
     const name = field("Name", "text", object.name || object.type);
     const type = field("Type", "text", object.isGroup ? "Group" : object.geometry?.type || object.type, true);
     name.input.addEventListener("change", () => {
-        const before = object.name;
-        const after = name.input.value.trim() || before;
-        if (after === before) return;
+        const before = object.name; const after = name.input.value.trim() || before; if (after === before) return;
         object.name = after;
         pushHistory({ undo: () => { object.name = before; refreshInspector(); }, redo: () => { object.name = after; refreshInspector(); } });
-        status(`Renamed to ${after}`);
-        window.dispatchEvent(new CustomEvent("editor:hierarchy-refresh"));
+        status(`Renamed to ${after}`); window.dispatchEvent(new CustomEvent("editor:hierarchy-refresh"));
     });
-    body.append(name.row, type.row);
-    return section("Object", body);
+    body.append(name.row, type.row); return section("Object", body);
 }
 
 function buildTransform(object) {
-    const body = document.createElement("div");
-    body.className = "section-body";
-    body.append(
-        vectorField("Position", object, "position", false),
-        vectorField("Rotation", object, "rotation", true),
-        vectorField("Scale", object, "scale", false)
-    );
+    const body = document.createElement("div"); body.className = "section-body";
+    body.append(vectorField("Position", object, "position", false), vectorField("Rotation", object, "rotation", true), vectorField("Scale", object, "scale", false));
     return section("Transform", body);
 }
 
 function vectorField(label, object, property, degrees) {
-    const wrapper = document.createElement("div");
-    wrapper.style.marginBottom = "9px";
-    const title = document.createElement("label");
-    title.style.cssText = "display:block;margin-bottom:4px;color:#858994;font-size:10px";
-    title.textContent = label;
-    const row = document.createElement("div");
-    row.style.cssText = "display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px";
-
+    const wrapper = document.createElement("div"); wrapper.style.marginBottom = "9px";
+    const title = document.createElement("label"); title.style.cssText = "display:block;margin-bottom:4px;color:#858994;font-size:10px"; title.textContent = label;
+    const row = document.createElement("div"); row.style.cssText = "display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px";
     ["x", "y", "z"].forEach(axis => {
-        const input = document.createElement("input");
-        input.className = "property-input";
-        input.type = "number";
-        input.step = degrees ? "1" : "0.01";
-        input.title = `${label} ${axis.toUpperCase()}`;
-        input.value = formatValue(readAxis(object, property, axis, degrees), degrees);
+        const input = document.createElement("input"); input.className = "property-input"; input.type = "number"; input.step = degrees ? "1" : "0.01"; input.title = `${label} ${axis.toUpperCase()}`; input.value = formatValue(readAxis(object, property, axis, degrees), degrees);
         input.addEventListener("change", () => {
-            const before = object[property].clone();
-            const value = Number(input.value) || 0;
-            const after = object[property].clone();
-            if (degrees) after[axis] = THREE.MathUtils.degToRad(value);
-            else after[axis] = value;
-            object[property].copy(after);
-            pushHistory({ undo: () => { object[property].copy(before); refreshInspector(); }, redo: () => { object[property].copy(after); refreshInspector(); } });
-            status(`${label} changed`);
-        });
-        row.appendChild(input);
+            const before = object[property].clone(); const value = Number(input.value) || 0; const after = object[property].clone();
+            if (degrees) after[axis] = THREE.MathUtils.degToRad(value); else after[axis] = value;
+            object[property].copy(after); pushHistory({ undo: () => { object[property].copy(before); refreshInspector(); }, redo: () => { object[property].copy(after); refreshInspector(); } }); status(`${label} changed`);
+        }); row.appendChild(input);
     });
-
-    wrapper.append(title, row);
-    return wrapper;
+    wrapper.append(title, row); return wrapper;
 }
 
 function buildVisibility(object) {
-    const body = document.createElement("div");
-    body.className = "section-body";
-    const row = document.createElement("div");
-    row.className = "property-row";
-    row.innerHTML = `<label>Visible</label><input type="checkbox">`;
-    const input = row.querySelector("input");
-    input.checked = object.visible;
-    input.addEventListener("change", () => {
-        const before = object.visible;
-        const after = input.checked;
-        object.visible = after;
-        pushHistory({ undo: () => { object.visible = before; refreshInspector(); }, redo: () => { object.visible = after; refreshInspector(); } });
-    });
-    body.appendChild(row);
-    return section("Visibility", body);
+    const body = document.createElement("div"); body.className = "section-body";
+    const row = document.createElement("div"); row.className = "property-row"; row.innerHTML = `<label>Visible</label><input type="checkbox">`;
+    const input = row.querySelector("input"); input.checked = object.visible;
+    input.addEventListener("change", () => { const before = object.visible, after = input.checked; object.visible = after; pushHistory({ undo: () => { object.visible = before; refreshInspector(); }, redo: () => { object.visible = after; refreshInspector(); } }); });
+    body.appendChild(row); return section("Visibility", body);
 }
 
 function buildMetadata(object) {
-    const body = document.createElement("div");
-    body.className = "section-body";
-    [["UUID", object.uuid], ["Mass", object.userData?.mass ?? "1"], ["Part Type", object.userData?.partType || "Default"]].forEach(([label, value]) => {
-        const item = field(label, "text", value, true);
-        body.appendChild(item.row);
-    });
+    const body = document.createElement("div"); body.className = "section-body";
+    [["UUID", object.uuid], ["Mass", object.userData?.mass ?? "1"], ["Part Type", object.userData?.partType || "Default"]].forEach(([label, value]) => body.appendChild(field(label, "text", value, true).row));
     return section("Metadata", body);
 }
 
 function buildMaterialSection(object) {
-    const body = document.createElement("div");
-    body.className = "section-body";
-    if (!object.material) {
-        const message = document.createElement("p");
-        message.style.color = "#777b85";
-        message.textContent = "This object has no editable material.";
-        body.appendChild(message);
-        return section("Material", body);
-    }
+    const body = document.createElement("div"); body.className = "section-body";
+    if (!object.material) { const message = document.createElement("p"); message.style.color = "#777b85"; message.textContent = "This object has no editable material."; body.appendChild(message); return section("Material", body); }
 
     const materials = Array.isArray(object.material) ? object.material : [object.material];
-    const slot = document.createElement("select");
-    slot.className = "property-select";
-    materials.forEach((material, index) => {
-        const option = document.createElement("option");
-        option.value = index;
-        option.textContent = material.name || `Material ${index + 1}`;
-        slot.appendChild(option);
-    });
-    const slotRow = document.createElement("div");
-    slotRow.className = "property-row";
-    const slotLabel = document.createElement("label");
-    slotLabel.textContent = "Slot";
-    slotRow.append(slotLabel, slot);
-    body.appendChild(slotRow);
+    const slot = document.createElement("select"); slot.className = "property-select";
+    materials.forEach((material, index) => { const option = document.createElement("option"); option.value = index; option.textContent = material.name || `Material ${index + 1}`; slot.appendChild(option); });
+    const slotRow = document.createElement("div"); slotRow.className = "property-row"; const slotLabel = document.createElement("label"); slotLabel.textContent = "Slot"; slotRow.append(slotLabel, slot); body.appendChild(slotRow);
 
-    const editor = document.createElement("div");
-    editor.style.marginTop = "8px";
-    body.appendChild(editor);
+    const actions = document.createElement("div"); actions.className = "inspector-actions";
+    actions.append(actionButton("Copy", () => { const m = materials[Number(slot.value)]; clipboardMaterial = cloneMaterialState(m); status("Material copied"); }), actionButton("Paste", () => { const m = materials[Number(slot.value)]; if (!clipboardMaterial) return status("Material clipboard is empty"); applyMaterialState(m, clipboardMaterial); refreshInspector(); status("Material pasted"); }), actionButton("Reset", () => { const m = materials[Number(slot.value)]; applyMaterialState(m, defaultMaterialState(m)); refreshInspector(); status("Material reset"); }));
+    body.appendChild(actions);
+
+    const presetRow = document.createElement("div"); presetRow.className = "property-row"; const presetLabel = document.createElement("label"); presetLabel.textContent = "Preset";
+    const preset = document.createElement("select"); preset.className = "property-select";
+    ["Custom", "Matte", "Metal", "Plastic", "Glass", "Glow"].forEach(name => { const option = document.createElement("option"); option.value = name; option.textContent = name; preset.appendChild(option); });
+    presetRow.append(presetLabel, preset); body.appendChild(presetRow);
+
+    const editor = document.createElement("div"); editor.style.marginTop = "8px"; body.appendChild(editor);
     const render = () => {
-        editor.replaceChildren();
-        const material = materials[Number(slot.value)];
-        if (!material) return;
+        editor.replaceChildren(); const material = materials[Number(slot.value)]; if (!material) return;
         addColor(editor, material);
         addRange(editor, "Metalness", material.metalness ?? 0, value => material.metalness = value);
         addRange(editor, "Roughness", material.roughness ?? 1, value => material.roughness = value);
+        addColorField(editor, "Emission", material.emissive || new THREE.Color(0x000000), color => { if (material.emissive) material.emissive.set(color); });
+        addRange(editor, "Emission Power", material.emissiveIntensity ?? 1, value => material.emissiveIntensity = value);
         addRange(editor, "Opacity", material.opacity ?? 1, value => { material.opacity = value; material.transparent = value < 1; material.depthWrite = value >= 1; material.needsUpdate = true; });
-        const wire = field("Wireframe", "checkbox", material.wireframe);
-        wire.input.checked = material.wireframe;
-        wire.input.addEventListener("change", () => { material.wireframe = wire.input.checked; material.needsUpdate = true; });
-        editor.appendChild(wire.row);
-        const texture = document.createElement("label");
-        texture.className = "file-input-label";
-        texture.textContent = "Load Texture";
-        const input = document.createElement("input");
-        input.type = "file"; input.accept = ".png,.jpg,.jpeg,.webp"; input.hidden = true;
-        input.addEventListener("change", () => loadTexture(input.files?.[0], material));
-        texture.appendChild(input); texture.addEventListener("click", () => input.click());
-        editor.appendChild(texture);
+        addSelect(editor, "Side", [["Front", THREE.FrontSide], ["Back", THREE.BackSide], ["Double", THREE.DoubleSide]], material.side, value => { material.side = Number(value); material.needsUpdate = true; });
+        const wire = field("Wireframe", "checkbox", material.wireframe); wire.input.checked = material.wireframe; wire.input.addEventListener("change", () => { material.wireframe = wire.input.checked; material.needsUpdate = true; }); editor.appendChild(wire.row);
+        const flat = field("Flat Shading", "checkbox", material.flatShading); flat.input.checked = !!material.flatShading; flat.input.addEventListener("change", () => { material.flatShading = flat.input.checked; material.needsUpdate = true; }); editor.appendChild(flat.row);
+        const texture = document.createElement("label"); texture.className = "file-input-label"; texture.textContent = "Load Base Texture";
+        const input = document.createElement("input"); input.type = "file"; input.accept = ".png,.jpg,.jpeg,.webp"; input.hidden = true; input.addEventListener("change", () => loadTexture(input.files?.[0], material)); texture.appendChild(input); texture.addEventListener("click", () => input.click()); editor.appendChild(texture);
     };
-    slot.addEventListener("change", render);
-    render();
-    return section("Material", body);
+    preset.addEventListener("change", () => { const m = materials[Number(slot.value)]; if (preset.value !== "Custom") { applyMaterialState(m, presetState(preset.value)); render(); status(`${preset.value} material applied`); } });
+    slot.addEventListener("change", render); render(); return section("Material", body);
 }
 
-function addColor(parent, material) {
-    const row = field("Color", "color", `#${material.color.getHexString()}`);
-    row.input.addEventListener("input", () => { material.color.set(row.input.value); material.needsUpdate = true; });
-    parent.appendChild(row.row);
+function addColor(parent, material) { addColorField(parent, "Color", material.color, color => { material.color.set(color); material.needsUpdate = true; }); }
+function addColorField(parent, label, initialColor, onChange) {
+    const row = field(label, "color", `#${initialColor.getHexString()}`); row.input.addEventListener("input", () => onChange(row.input.value)); parent.appendChild(row.row);
 }
-
+function addSelect(parent, label, options, initial, onChange) {
+    const row = document.createElement("div"); row.className = "property-row"; const caption = document.createElement("label"); caption.textContent = label; const select = document.createElement("select"); select.className = "property-select";
+    options.forEach(([name, value]) => { const option = document.createElement("option"); option.value = value; option.textContent = name; option.selected = value === initial; select.appendChild(option); }); select.addEventListener("change", () => onChange(select.value)); row.append(caption, select); parent.appendChild(row);
+}
 function addRange(parent, label, initial, onChange) {
-    const row = document.createElement("div");
-    row.className = "property-row";
-    row.innerHTML = `<label>${label}</label><div class="range-row"><input type="range" min="0" max="1" step="0.01"><input class="range-value" type="number" min="0" max="1" step="0.01"></div>`;
-    const range = row.querySelector("input[type=range]"), value = row.querySelector("input[type=number]");
-    range.value = initial; value.value = Number(initial).toFixed(2);
-    range.addEventListener("input", () => { value.value = Number(range.value).toFixed(2); onChange(Number(range.value)); });
-    value.addEventListener("change", () => { const n = Math.min(1, Math.max(0, Number(value.value) || 0)); range.value = n; value.value = n.toFixed(2); onChange(n); });
-    parent.appendChild(row);
+    const row = document.createElement("div"); row.className = "property-row"; row.innerHTML = `<label>${label}</label><div class="range-row"><input type="range" min="0" max="1" step="0.01"><input class="range-value" type="number" min="0" max="1" step="0.01"></div>`;
+    const range = row.querySelector("input[type=range]"), value = row.querySelector("input[type=number]"); range.value = Math.min(1, Math.max(0, Number(initial) || 0)); value.value = Number(range.value).toFixed(2);
+    range.addEventListener("input", () => { value.value = Number(range.value).toFixed(2); onChange(Number(range.value)); }); value.addEventListener("change", () => { const n = Math.min(1, Math.max(0, Number(value.value) || 0)); range.value = n; value.value = n.toFixed(2); onChange(n); }); parent.appendChild(row);
 }
-
-function field(label, type, value, disabled = false) {
-    const row = document.createElement("div");
-    row.className = "property-row";
-    const caption = document.createElement("label"); caption.textContent = label;
-    const input = document.createElement("input"); input.className = "property-input"; input.type = type; input.disabled = disabled;
-    if (type === "checkbox") input.checked = !!value; else input.value = value ?? "";
-    row.append(caption, input);
-    return { row, input };
-}
-
-function section(title, body) {
-    const wrapper = document.createElement("section"); wrapper.className = "inspector-section";
-    const head = document.createElement("button"); head.className = "section-head"; head.innerHTML = `<span class="section-chevron">▾</span>${title}`;
-    head.addEventListener("click", () => { body.hidden = !body.hidden; head.querySelector(".section-chevron").textContent = body.hidden ? "▸" : "▾"; });
-    wrapper.append(head, body); return wrapper;
-}
-
+function actionButton(label, onClick) { const button = document.createElement("button"); button.className = "icon-action"; button.type = "button"; button.textContent = label; button.addEventListener("click", onClick); return button; }
+function cloneMaterialState(m) { return { color: m.color?.getHex() ?? 0xffffff, metalness: m.metalness ?? 0, roughness: m.roughness ?? 1, opacity: m.opacity ?? 1, transparent: !!m.transparent, wireframe: !!m.wireframe, flatShading: !!m.flatShading, side: m.side, emissive: m.emissive?.getHex() ?? 0x000000, emissiveIntensity: m.emissiveIntensity ?? 1 }; }
+function applyMaterialState(m, state) { if (m.color) m.color.setHex(state.color); if (m.emissive) m.emissive.setHex(state.emissive ?? 0); m.metalness = state.metalness ?? 0; m.roughness = state.roughness ?? 1; m.opacity = state.opacity ?? 1; m.transparent = !!state.transparent || m.opacity < 1; m.wireframe = !!state.wireframe; m.flatShading = !!state.flatShading; m.side = state.side ?? THREE.FrontSide; m.emissiveIntensity = state.emissiveIntensity ?? 1; m.depthWrite = m.opacity >= 1; m.needsUpdate = true; }
+function defaultMaterialState(m) { return { color: 0xffffff, metalness: 0, roughness: 1, opacity: 1, transparent: false, wireframe: false, flatShading: false, side: THREE.FrontSide, emissive: 0, emissiveIntensity: 1 }; }
+function presetState(name) { const states = { Matte: { color: 0x9da3ad, metalness: 0, roughness: 0.85, opacity: 1, transparent: false, wireframe: false, flatShading: false, side: THREE.FrontSide, emissive: 0, emissiveIntensity: 1 }, Metal: { color: 0xb8bec8, metalness: 1, roughness: 0.22, opacity: 1, transparent: false, wireframe: false, flatShading: false, side: THREE.FrontSide, emissive: 0, emissiveIntensity: 1 }, Plastic: { color: 0x626a78, metalness: 0.05, roughness: 0.32, opacity: 1, transparent: false, wireframe: false, flatShading: false, side: THREE.FrontSide, emissive: 0, emissiveIntensity: 1 }, Glass: { color: 0xa9c9ff, metalness: 0, roughness: 0.05, opacity: 0.28, transparent: true, wireframe: false, flatShading: false, side: THREE.DoubleSide, emissive: 0, emissiveIntensity: 1 }, Glow: { color: 0x7aa2ff, metalness: 0.05, roughness: 0.18, opacity: 1, transparent: false, wireframe: false, flatShading: false, side: THREE.FrontSide, emissive: 0x6f8cff, emissiveIntensity: 2.5 } }; return states[name] || defaultMaterialState(null); }
+function field(label, type, value, disabled = false) { const row = document.createElement("div"); row.className = "property-row"; const caption = document.createElement("label"); caption.textContent = label; const input = document.createElement("input"); input.className = "property-input"; input.type = type; input.disabled = disabled; if (type === "checkbox") input.checked = !!value; else input.value = value ?? ""; row.append(caption, input); return { row, input }; }
+function section(title, body) { const wrapper = document.createElement("section"); wrapper.className = "inspector-section"; const head = document.createElement("button"); head.className = "section-head"; head.innerHTML = `<span class="section-chevron">▾</span>${title}`; head.addEventListener("click", () => { body.hidden = !body.hidden; head.querySelector(".section-chevron").textContent = body.hidden ? "▸" : "▾"; }); wrapper.append(head, body); return wrapper; }
 function readAxis(object, property, axis, degrees) { const value = object[property][axis]; return degrees ? THREE.MathUtils.radToDeg(value) : value; }
 function formatValue(value, degrees) { return Number(value).toFixed(degrees ? 1 : 2); }
-function loadTexture(file, material) {
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => new THREE.TextureLoader().load(reader.result, texture => { texture.colorSpace = THREE.SRGBColorSpace; texture.flipY = false; material.map = texture; material.needsUpdate = true; });
-    reader.readAsDataURL(file);
-}
+function loadTexture(file, material) { if (!file) return; const reader = new FileReader(); reader.onload = () => new THREE.TextureLoader().load(reader.result, texture => { texture.colorSpace = THREE.SRGBColorSpace; texture.flipY = false; material.map = texture; material.needsUpdate = true; }); reader.readAsDataURL(file); }
 function status(message) { window.dispatchEvent(new CustomEvent("editor:status", { detail: message })); }
