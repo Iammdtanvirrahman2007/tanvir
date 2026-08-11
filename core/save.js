@@ -3,30 +3,39 @@ import { getObjects } from "./objectManager.js";
 export function serializeScene(scene) {
     const roots = scene.children.filter(object => object.userData?.editorObject && !object.userData?.editorOnly);
     return {
-        format: "ModelForgeScene",
-        version: 2,
+        format: "ModelForgeProject",
+        fileExtension: ".rkp",
+        version: 3,
+        app: "ModelForge",
         created: new Date().toISOString(),
         objects: roots.map(serializeObject)
     };
 }
 
-export function saveScene(scene) {
+export function saveScene(scene, options = {}) {
     const data = serializeScene(scene);
+    const extension = options.format === "json" ? "json" : "rkp";
+    const filename = options.filename || `modelforge-project.${extension}`;
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = "modelforge-scene.json";
+    link.download = filename;
+    document.body.appendChild(link);
     link.click();
-    URL.revokeObjectURL(url);
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
     return data;
+}
+
+export function saveRKP(scene, filename = "modelforge-project.rkp") {
+    return saveScene(scene, { format: "rkp", filename: filename.endsWith(".rkp") ? filename : `${filename}.rkp` });
 }
 
 function serializeObject(object) {
     const materials = object.material
         ? (Array.isArray(object.material) ? object.material : [object.material]).map(serializeMaterial)
         : [];
-
     return {
         kind: object.isGroup ? "Group" : "Mesh",
         type: object.geometry?.type || object.type,
