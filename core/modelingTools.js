@@ -15,15 +15,45 @@ export function duplicateObject(object, scene) {
     return clone;
 }
 
+/**
+ * Mirror the object's transform across the selected WORLD axis.
+ *
+ * A mirror operation is a spatial reflection, not a negative-scale operation.
+ * Therefore position is reflected while scale is preserved. Rotation is also
+ * adjusted so the object's orientation follows the reflected coordinate frame.
+ */
 export function mirrorObject(object, axis = "x") {
     if (!object || !["x", "y", "z"].includes(axis)) return false;
-    const previous = object.scale.clone();
-    object.scale[axis] *= -1;
-    object.updateMatrixWorld(true);
-    const next = object.scale.clone();
-    pushHistory({ label: `Mirror ${axis.toUpperCase()}`, undo: () => { object.scale.copy(previous); object.updateMatrixWorld(true); }, redo: () => { object.scale.copy(next); object.updateMatrixWorld(true); } });
+
+    const previous = captureTransform(object);
+    const next = captureTransform(object);
+
+    // Reflect position through the corresponding world-origin plane.
+    next.position[axis] *= -1;
+
+    // Reflect Euler orientation across the same plane.
+    // Scale intentionally remains unchanged.
+    if (axis === "x") {
+        next.rotation.y *= -1;
+        next.rotation.z *= -1;
+    } else if (axis === "y") {
+        next.rotation.x *= -1;
+        next.rotation.z *= -1;
+    } else {
+        next.rotation.x *= -1;
+        next.rotation.y *= -1;
+    }
+
+    applyTransform(object, next);
+
+    pushHistory({
+        label: `Mirror ${axis.toUpperCase()}`,
+        undo: () => applyTransform(object, previous),
+        redo: () => applyTransform(object, next)
+    });
+
     refreshInspector();
-    dispatch("editor:modeling-change", { action: "mirror", object, axis });
+    dispatch("editor:modeling-change", { action: "mirror", object, axis, space: "world" });
     return true;
 }
 
@@ -63,6 +93,22 @@ export function applyBevel(object, amount = 0.08, segments = 2) {
 
 export function getModelingTools() {
     return { duplicateObject, mirrorObject, arrayDuplicate, applyBevel };
+}
+
+function captureTransform(object) {
+    return {
+        position: object.position.clone(),
+        rotation: object.rotation.clone(),
+        scale: object.scale.clone()
+    };
+}
+
+function applyTransform(object, transform) {
+    object.position.copy(transform.position);
+    object.rotation.copy(transform.rotation);
+    object.scale.copy(transform.scale);
+    object.updateMatrix();
+    object.updateMatrixWorld(true);
 }
 
 function uniqueName(base, scene) {
