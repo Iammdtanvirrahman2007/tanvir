@@ -8,6 +8,10 @@ import { focusObject, consumeFocusTarget } from "./focus.js";
 
 const raycaster = new THREE.Raycaster();
 const mouse = new THREE.Vector2();
+const CLICK_DRAG_THRESHOLD = 5;
+const TOUCH_DOUBLE_TAP_MS = 330;
+const TOUCH_DOUBLE_TAP_DISTANCE = 28;
+
 let selected = null;
 let selectionScene = null;
 let selectionCanvas = null;
@@ -17,12 +21,12 @@ let boxDragging = false;
 let groupSyncInstalled = false;
 let pointerStart = null;
 let pointerMoved = false;
-let pointerDownTarget = null;
 let lastTouchTap = 0;
 let lastTouchPoint = null;
+let suppressNextClick = false;
 
 export function getSelected() { return selected; }
-export function getSelection() { return selected ? [selected] : getMultiSelection(); }
+export function getSelection() { return getMultiSelection(); }
 
 export function clearSelection() {
     selected = null;
@@ -95,45 +99,39 @@ export function setupSelection(renderer, camera, scene) {
         const tc = getTransform();
         if (event.button !== 0 || isDraggingTransform() || tc?.axis) return;
 
-        pointerStart = { x: event.clientX, y: event.clientY, pointerId: event.pointerId };
+        pointerStart = { x: event.clientX, y: event.clientY, pointerId: event.pointerId, shift: event.shiftKey };
         pointerMoved = false;
-        pointerDownTarget = pick(event, camera, scene);
-
-        if (event.shiftKey && event.pointerType !== "touch") {
-            startBoxSelection(event);
-            pointerMoved = true;
-        }
+        suppressNextClick = false;
     }, { passive: true });
 
     canvas.addEventListener("pointermove", event => {
-        if (pointerStart && event.pointerId === pointerStart.pointerId) {
-            if (Math.hypot(event.clientX - pointerStart.x, event.clientY - pointerStart.y) > 5) pointerMoved = true;
+        if (!pointerStart || event.pointerId !== pointerStart.pointerId) return;
+
+        const distance = Math.hypot(event.clientX - pointerStart.x, event.clientY - pointerStart.y);
+        if (distance > CLICK_DRAG_THRESHOLD) pointerMoved = true;
+
+        // Shift + drag becomes box selection. Shift + click remains normal multi-select.
+        if (pointerStart.shift && event.pointerType !== "touch" && !boxDragging && distance > CLICK_DRAG_THRESHOLD) {
+            startBoxSelection({ ...event, pointerId: pointerStart.pointerId }, pointerStart);
+            suppressNextClick = true;
         }
-        if (boxDragging && boxStart) updateBox(event);
+
+        if (boxDragging) updateBox(event);
     }, { passive: true });
 
     canvas.addEventListener("pointerup", event => {
+        if (event.pointerId !== pointerStart?.pointerId) return;
+
         if (boxDragging) {
             finishBoxSelection(event, camera, scene);
-            resetPointerState();
-            return;
+            suppressNextClick = true;
         }
 
-        if (pointerStart && event.pointerId === pointerStart.pointerId && !pointerMoved) {
-            const target = pick(event, camera, scene) || pointerDownTarget;
-            if (target) {
-                const toggle = event.ctrlKey || event.metaKey;
-                selectObject(target, { toggle });
-            } else if (!(event.ctrlKey || event.metaKey)) {
-                clearSelection();
-            }
-        }
-
-        if (event.pointerType === "touch" && !pointerMoved) {
+        if (event.pointerType === "touch" && !pointerMoved && !boxDragging) {
             const now = performance.now();
             const point = { x: event.clientX, y: event.clientY };
-            const closeEnough = lastTouchPoint && Math.hypot(point.x - lastTouchPoint.x, point.y - lastTouchPoint.y) < 28;
-            if (now - lastTouchTap < 330 && closeEnough) {
+            const closeEnough = lastTouchPoint && Math.hypot(point.x - lastTouchPoint.x, point.y - lastTouchPoint.y) < TOUCH_DOUBLE_TAP_DISTANCE;
+            if (now - lastTouchTap < TOUCH_DOUBLE_TAP_MS && closeEnough) {
                 const target = pickDeep(event, camera, scene);
                 if (target) {
                     if (!consumeFocusTarget(target)) {
@@ -148,12 +146,31 @@ export function setupSelection(renderer, camera, scene) {
                 lastTouchPoint = point;
             }
         }
+
         resetPointerState();
     }, { passive: true });
 
     canvas.addEventListener("pointercancel", () => {
         cancelBoxSelection();
         resetPointerState();
+        suppressNextClick = true;
+    }, { passive: true });
+
+    // Native click is intentionally used for selection. OrbitControls consumes pointer
+    // gestures, while click is only emitted for a completed click, not a camera drag.
+    canvas.addEventListener("click", event => {
+        if (suppressNextClick) {
+            suppressNextClick = false;
+            return;
+        }
+        if (event.button !== 0 || isDraggingTransform()) return;
+        const target = pick(event, camera, scene);
+        const toggle = event.ctrlKey || event.metaKey || event.shiftKey;
+        if (target) {
+            selectObject(target, { toggle });
+        } else if (!toggle) {
+            clearSelection();
+        }
     }, { passive: true });
 
     canvas.addEventListener("dblclick", event => {
@@ -169,7 +186,6 @@ export function setupSelection(renderer, camera, scene) {
 function resetPointerState() {
     pointerStart = null;
     pointerMoved = false;
-    pointerDownTarget = null;
 }
 
 function installGroupSelectionSync() {
@@ -185,8 +201,12 @@ function installGroupSelectionSync() {
 }
 
 function pick(event, camera, scene) {
-    const hit = raycast(event, camera, scene);
-    return hit ? findSelectableRoot(hit.object, scene) : null;
+    const hits = raycastAll(event, camera, scene);
+    for (const hit of hits) {
+        const target = findSelectableRoot(hit.object, scene);
+        if (target) return target;
+    }
+    return null;
 }
 
 function pickDeep(event, camera, scene) {
@@ -201,10 +221,6 @@ function pickDeep(event, camera, scene) {
     return null;
 }
 
-function raycast(event, camera, scene) {
-    return raycastAll(event, camera, scene)[0] || null;
-}
-
 function raycastAll(event, camera, scene) {
     if (!selectionCanvas) return [];
     const rect = selectionCanvas.getBoundingClientRect();
@@ -212,8 +228,7 @@ function raycastAll(event, camera, scene) {
     mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
     mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
     raycaster.setFromCamera(mouse, camera);
-    const hits = raycaster.intersectObjects(scene.children, true);
-    return hits.filter(hit => !isEditorOnlyHit(hit.object));
+    return raycaster.intersectObjects(scene.children, true).filter(hit => !isEditorOnlyHit(hit.object));
 }
 
 function isEditorOnlyHit(object) {
@@ -225,9 +240,9 @@ function isEditorOnlyHit(object) {
     return false;
 }
 
-function startBoxSelection(event) {
+function startBoxSelection(event, start) {
     boxDragging = true;
-    boxStart = { x: event.clientX, y: event.clientY };
+    boxStart = { x: start.x, y: start.y };
     selectionCanvas.setPointerCapture?.(event.pointerId);
     boxElement = document.createElement("div");
     boxElement.className = "selection-box-overlay";
