@@ -8,7 +8,7 @@ import { setupCopyPaste } from "./core/copyPaste.js";
 import { setupDuplicate } from "./core/duplicate.js";
 import { toggleSnap, setupTransform, setTransformMode, isDraggingTransform } from "./core/transform.js";
 import { undo, redo, canUndo, canRedo } from "./core/history.js";
-import { initScene, scene, renderer, camera, controls, createDefaultCube, grid, resetCamera, getFPS } from "./core/scene.js";
+import { initScene, scene, renderer, camera, controls, createDefaultCube, grid, resetCamera, getFPS } from "./core/scene.js?v=20260811-runtime-fix";
 import { setupDelete } from "./core/delete.js";
 import { setupSelection, clearSelection, getSelected } from "./core/selection.js";
 import { addObject, getObjects } from "./core/objectManager.js";
