@@ -1,6 +1,6 @@
 import * as THREE from "three";
 
-const STORAGE_KEY = "modelforge:materials:v1";
+const STORAGE_KEY = "modelforge:materials:v2";
 const materials = new Map();
 
 export function initMaterialLibrary() {
@@ -9,8 +9,8 @@ export function initMaterialLibrary() {
         registerPreset("Matte", { color: "#8b909a", metalness: 0, roughness: 0.82 });
         registerPreset("Metal", { color: "#9aa3ad", metalness: 1, roughness: 0.24 });
         registerPreset("Plastic", { color: "#5f6b7a", metalness: 0.05, roughness: 0.38 });
-        registerPreset("Glass", { color: "#b9d8e8", metalness: 0, roughness: 0.08, opacity: 0.28, transparent: true });
-        registerPreset("Glow", { color: "#9edcff", metalness: 0, roughness: 0.25, emissive: "#4aa3d8", emissiveIntensity: 1.5 });
+        registerPreset("Glass", { color: "#b9d8e8", metalness: 0, roughness: 0.08, opacity: 0.28, transparent: true, side: THREE.DoubleSide });
+        registerPreset("Glow", { color: "#9edcff", metalness: 0, roughness: 0.25, emissive: "#4aa3d8", emissiveIntensity: 2.5 });
         save();
     }
     return listMaterials();
@@ -46,7 +46,9 @@ export function renameMaterial(oldName, newName) {
     if (!materials.has(oldKey) || !newKey || (newKey !== oldKey && materials.has(newKey))) return false;
     const data = materials.get(oldKey);
     data.name = newName.trim();
-    materials.delete(oldKey); materials.set(newKey, data); save();
+    materials.delete(oldKey);
+    materials.set(newKey, data);
+    save();
     dispatch("editor:material-library-change", { action: "rename", oldName, newName });
     return true;
 }
@@ -54,7 +56,8 @@ export function renameMaterial(oldName, newName) {
 export function deleteMaterial(name) {
     const key = normalize(name);
     if (!materials.has(key)) return false;
-    materials.delete(key); save();
+    materials.delete(key);
+    save();
     dispatch("editor:material-library-change", { action: "delete", name });
     return true;
 }
@@ -65,21 +68,76 @@ export function applyMaterial(object, name) {
     if (!source) return false;
     if (Array.isArray(object.material)) object.material = object.material.map(() => source.clone());
     else object.material = source.clone();
-    object.material.needsUpdate = true;
+    const applied = Array.isArray(object.material) ? object.material[0] : object.material;
+    if (applied) applied.needsUpdate = true;
     object.userData.materialName = name;
     dispatch("editor:material-applied", { object, name });
     return true;
 }
 
+export function serializeMaterialState(material, name = material?.name || "") {
+    if (!material) return null;
+    return {
+        name,
+        color: material.color?.getHex?.() ?? 0xffffff,
+        metalness: material.metalness ?? 0,
+        roughness: material.roughness ?? 1,
+        opacity: material.opacity ?? 1,
+        transparent: !!material.transparent,
+        depthWrite: material.depthWrite ?? true,
+        wireframe: !!material.wireframe,
+        flatShading: !!material.flatShading,
+        side: material.side ?? THREE.FrontSide,
+        emissive: material.emissive?.getHex?.() ?? 0,
+        emissiveIntensity: material.emissiveIntensity ?? 1,
+        baseTextureData: material.userData?.baseTextureData || null
+    };
+}
+
+export function deserializeMaterialState(data) {
+    if (!data) return new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.65 });
+    const material = new THREE.MeshStandardMaterial({
+        color: data.color ?? 0xffffff,
+        metalness: data.metalness ?? 0,
+        roughness: data.roughness ?? 1,
+        opacity: data.opacity ?? 1,
+        transparent: data.transparent ?? false,
+        depthWrite: data.depthWrite ?? ((data.opacity ?? 1) >= 1),
+        wireframe: data.wireframe ?? false,
+        side: data.side ?? THREE.FrontSide,
+        emissive: data.emissive ?? 0,
+        emissiveIntensity: data.emissiveIntensity ?? 1
+    });
+    material.name = data.name || "";
+    material.flatShading = !!data.flatShading;
+    if (material.flatShading) material.needsUpdate = true;
+    if (data.baseTextureData) {
+        material.userData.baseTextureData = data.baseTextureData;
+        restoreTexture(material, data.baseTextureData);
+    }
+    return material;
+}
+
 function serializeMaterial(name, material) {
-    return { name, color: material.color?.getHexString?.() || "ffffff", metalness: material.metalness ?? 0, roughness: material.roughness ?? 1, opacity: material.opacity ?? 1, transparent: !!material.transparent, wireframe: !!material.wireframe, emissive: material.emissive?.getHexString?.() || "000000", emissiveIntensity: material.emissiveIntensity ?? 1, side: material.side ?? THREE.FrontSide };
+    return serializeMaterialState(material, name);
 }
 
 function deserializeMaterial(data) {
-    return new THREE.MeshStandardMaterial({ color: `#${data.color}`, metalness: data.metalness, roughness: data.roughness, opacity: data.opacity, transparent: data.transparent, wireframe: data.wireframe, emissive: `#${data.emissive}`, emissiveIntensity: data.emissiveIntensity, side: data.side });
+    return deserializeMaterialState(data);
+}
+
+function restoreTexture(material, dataUrl) {
+    try {
+        new THREE.TextureLoader().load(dataUrl, texture => {
+            texture.colorSpace = THREE.SRGBColorSpace;
+            texture.flipY = false;
+            material.map = texture;
+            material.needsUpdate = true;
+        });
+    } catch {}
 }
 
 function normalize(value) { return String(value || "").trim().toLowerCase(); }
-function save() { try { localStorage.setItem(STORAGE_KEY, JSON.stringify([...materials.values()])); } catch {} }
-function load() { try { const data = JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]"); data.forEach(item => materials.set(normalize(item.name), item)); } catch {} }
+function save() { try { localStorage.setItem(STORAGE_KEY, JSON.stringify([...materials.values()])); } catch (error) { console.warn("Material library save failed", error); } }
+function load() { try { const data = JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]"); if (!Array.isArray(data)) return; data.forEach(item => { if (item?.name) materials.set(normalize(item.name), item); }); } catch (error) { console.warn("Material library load failed", error); } }
 function dispatch(type, detail) { window.dispatchEvent(new CustomEvent(type, { detail })); }
