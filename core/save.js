@@ -1,5 +1,4 @@
 import * as THREE from "three";
-import { getObjects } from "./objectManager.js";
 
 const FORMATS = {
     rkp: { label: "ModelForge Project", ext: "rkp", mime: "application/json" },
@@ -9,9 +8,11 @@ const FORMATS = {
     glb: { label: "glTF Binary", ext: "glb", mime: "model/gltf-binary" }
 };
 
+const PROJECT_NAME_KEY = "modelforge:project-name";
+
 export function serializeScene(scene) {
     const roots = scene.children.filter(object => object.userData?.editorObject && !object.userData?.editorOnly);
-    return { format: "ModelForgeProject", fileExtension: ".rkp", version: 4, app: "ModelForge", created: new Date().toISOString(), objects: roots.map(serializeObject) };
+    return { format: "ModelForgeProject", fileExtension: ".rkp", version: 4, app: "ModelForge", projectName: getProjectName(), created: new Date().toISOString(), objects: roots.map(serializeObject) };
 }
 
 export function saveScene(scene, options = {}) {
@@ -21,28 +22,55 @@ export function saveScene(scene, options = {}) {
     if (format === "gltf" || format === "glb") return exportGLTF(scene, format, options.filename);
     const data = serializeScene(scene);
     const ext = FORMATS[format].ext;
-    return downloadBlob(JSON.stringify(data, null, 2), options.filename || `modelforge-project.${ext}`, FORMATS[format].mime);
+    return downloadBlob(JSON.stringify(data, null, 2), options.filename || `${sanitizeName(getProjectName())}.${ext}`, FORMATS[format].mime);
 }
 
 export function chooseSaveFormat(scene) {
     const panel = document.createElement("div");
     panel.className = "save-format-dialog";
-    panel.innerHTML = `<div class="save-format-card"><h3>Save Project</h3><p>Choose a format</p><select id="saveFormatSelect"><option value="rkp">ModelForge Project (.rkp)</option><option value="json">JSON Scene (.json)</option><option value="obj">Wavefront OBJ (.obj)</option><option value="gltf">glTF (.gltf)</option><option value="glb">glTF Binary (.glb)</option></select><input id="saveFilename" placeholder="File name" value="modelforge-project"><div class="save-format-actions"><button data-cancel>Cancel</button><button data-save>Save</button></div></div>`;
+    const currentName = getProjectName();
+    panel.innerHTML = `<div class="save-format-card"><h3>Save Project</h3><label class="save-field-label" for="saveFilename">File name</label><input id="saveFilename" autocomplete="off" spellcheck="false" placeholder="My Rocket Model" value="${escapeHtml(currentName)}"><label class="save-field-label" for="saveFormatSelect">Format</label><select id="saveFormatSelect"><option value="rkp">ModelForge Project (.rkp)</option><option value="json">JSON Scene (.json)</option><option value="obj">Wavefront OBJ (.obj)</option><option value="gltf">glTF (.gltf)</option><option value="glb">glTF Binary (.glb)</option></select><div class="save-format-actions"><button data-cancel>Cancel</button><button data-save>Save</button></div></div>`;
     document.body.appendChild(panel);
+    const input = panel.querySelector("#saveFilename");
+    const formatSelect = panel.querySelector("#saveFormatSelect");
     const finish = () => panel.remove();
+    const submit = () => {
+        const format = formatSelect.value;
+        const name = sanitizeName(input.value) || "modelforge-project";
+        setProjectName(name);
+        saveScene(scene, { format, filename: `${name}.${format}` });
+        finish();
+    };
     panel.addEventListener("click", event => {
         if (event.target.closest("[data-cancel]")) return finish();
-        if (!event.target.closest("[data-save]")) return;
-        const format = panel.querySelector("#saveFormatSelect").value;
-        const name = panel.querySelector("#saveFilename").value.trim() || "modelforge-project";
-        saveScene(scene, { format, filename: `${name.replace(/\.[^.]+$/, "")}.${format}` });
-        finish();
+        if (event.target.closest("[data-save]")) submit();
     });
+    input.addEventListener("keydown", event => { if (event.key === "Enter") submit(); if (event.key === "Escape") finish(); });
+    requestAnimationFrame(() => { input.focus(); input.select(); });
     return panel;
 }
 
-export function saveRKP(scene, filename = "modelforge-project.rkp") { return saveScene(scene, { format: "rkp", filename: filename.endsWith(".rkp") ? filename : `${filename}.rkp` }); }
+export function saveRKP(scene, filename) {
+    const name = sanitizeName(filename || getProjectName() || "modelforge-project").replace(/\.rkp$/i, "");
+    setProjectName(name);
+    return saveScene(scene, { format: "rkp", filename: `${name}.rkp` });
+}
+
+export function getProjectName() {
+    try { return localStorage.getItem(PROJECT_NAME_KEY) || "modelforge-project"; } catch { return "modelforge-project"; }
+}
+
+export function setProjectName(name) {
+    const clean = sanitizeName(name) || "modelforge-project";
+    try { localStorage.setItem(PROJECT_NAME_KEY, clean); } catch {}
+    window.dispatchEvent(new CustomEvent("editor:project-name-change", { detail: clean }));
+    return clean;
+}
+
 export function getSupportedSaveFormats() { return Object.values(FORMATS).map(item => ({ ...item })); }
+
+function sanitizeName(value) { return String(value || "").trim().replace(/\.[^.]+$/, "").replace(/[\\/:*?"<>|]/g, "-").replace(/\s+/g, " ").slice(0, 120).trim(); }
+function escapeHtml(value) { return String(value).replace(/[&<>'"]/g, char => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" }[char])); }
 
 function downloadBlob(content, filename, mime) {
     const blob = new Blob([content], { type: mime });
@@ -51,7 +79,7 @@ function downloadBlob(content, filename, mime) {
     setTimeout(() => URL.revokeObjectURL(url), 1000); return true;
 }
 
-function exportOBJ(scene, filename = "modelforge-model.obj") {
+function exportOBJ(scene, filename = `${sanitizeName(getProjectName()) || "modelforge-model"}.obj`) {
     const vertices = [], faces = [];
     scene.updateMatrixWorld(true);
     scene.traverse(object => {
@@ -74,7 +102,7 @@ async function exportGLTF(scene, format, filename) {
         exporter.parse(scene, result => {
             const binary = format === "glb";
             const data = binary ? result : JSON.stringify(result, null, 2);
-            downloadBlob(data, filename || `modelforge-model.${format}`, binary ? "model/gltf-binary" : "model/gltf+json");
+            downloadBlob(data, filename || `${sanitizeName(getProjectName()) || "modelforge-model"}.${format}`, binary ? "model/gltf-binary" : "model/gltf+json");
         }, error => console.error("glTF export failed", error), { binary: format === "glb" });
         return true;
     } catch (error) { console.error("glTF exporter unavailable", error); return false; }
