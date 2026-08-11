@@ -6,20 +6,17 @@ export function loadScene(scene) {
     const input = document.createElement("input");
     input.type = "file";
     input.accept = ".json";
-
     input.addEventListener("change", event => {
         const file = event.target.files?.[0];
         if (!file) return;
-
         const reader = new FileReader();
         reader.onload = () => {
             try {
                 const parsed = JSON.parse(reader.result);
                 const roots = Array.isArray(parsed) ? parsed : parsed.objects;
                 if (!Array.isArray(roots)) throw new Error("Invalid ModelForge scene.");
-
                 clearObjects(scene);
-                roots.forEach(data => restoreObject(scene, data));
+                roots.forEach(data => restoreObject(scene, scene, data));
                 rebuildHierarchy();
                 window.dispatchEvent(new CustomEvent("editor:status", { detail: `Loaded ${roots.length} objects` }));
             } catch (error) {
@@ -30,14 +27,13 @@ export function loadScene(scene) {
         reader.readAsText(file);
         input.value = "";
     }, { once: true });
-
     input.click();
 }
 
-function restoreObject(parent, data) {
+function restoreObject(scene, parent, data) {
     if (!data) return null;
-
     let object;
+
     if (data.kind === "Group" || data.type === "Group") {
         object = new THREE.Group();
         object.userData.selectable = true;
@@ -61,22 +57,13 @@ function restoreObject(parent, data) {
     Object.assign(object.userData, data.userData || {});
 
     parent.add(object);
-    addObject(parent === parent.scene ? parent : parent.scene, object);
-
-    (data.children || []).forEach(child => restoreObject(object, child));
+    addObject(scene, object);
+    (data.children || []).forEach(child => restoreObject(scene, object, child));
     return object;
 }
 
 function createMaterial(data) {
-    const material = new THREE.MeshStandardMaterial({
-        color: data.color ?? 0xffffff,
-        metalness: data.metalness ?? 0,
-        roughness: data.roughness ?? 1,
-        opacity: data.opacity ?? 1,
-        transparent: data.transparent ?? false,
-        wireframe: data.wireframe ?? false,
-        side: data.side ?? THREE.FrontSide
-    });
+    const material = new THREE.MeshStandardMaterial({ color: data.color ?? 0xffffff, metalness: data.metalness ?? 0, roughness: data.roughness ?? 1, opacity: data.opacity ?? 1, transparent: data.transparent ?? false, wireframe: data.wireframe ?? false, side: data.side ?? THREE.FrontSide });
     material.name = data.name || "";
     return material;
 }
