@@ -13,6 +13,7 @@ let selectionCanvas = null;
 let boxStart = null;
 let boxElement = null;
 let boxDragging = false;
+let groupSyncInstalled = false;
 
 export function getSelected() { return selected; }
 export function getSelection() { return selected ? [selected] : getMultiSelection(); }
@@ -39,10 +40,17 @@ export function selectObject(object, options = {}) {
             highlight(selection[0]);
             updateInspector(selection[0]);
             setActiveHierarchy(selection[0]);
+        } else if (selection.length > 1) {
+            detachTransform();
+            highlight(null);
+            selection.forEach(item => highlight(item));
+            updateInspector(null);
+            clearHierarchySelection();
         } else {
             detachTransform();
             highlight(null);
             updateInspector(null);
+            clearHierarchySelection();
         }
         window.dispatchEvent(new CustomEvent("editor:selection-change", { detail: selection }));
         return;
@@ -58,7 +66,7 @@ export function selectObject(object, options = {}) {
 }
 
 export function selectMultiple(objects, options = {}) {
-    const valid = [...new Set(objects.filter(Boolean))];
+    const valid = normalizeObjects(objects);
     if (!valid.length) return clearSelection();
     setMultiSelection(valid);
     selected = valid[valid.length - 1];
@@ -71,9 +79,9 @@ export function selectMultiple(objects, options = {}) {
     } else {
         detachTransform();
         highlight(null);
+        if (options.highlight !== false) valid.forEach(object => highlight(object));
         updateInspector(null);
         clearHierarchySelection();
-        if (options.highlight !== false) valid.forEach(object => highlight(object));
     }
     window.dispatchEvent(new CustomEvent("editor:selection-change", { detail: valid }));
 }
@@ -82,10 +90,9 @@ export function setupSelection(renderer, camera, scene) {
     const canvas = renderer.domElement;
     selectionCanvas = canvas;
     selectionScene = scene;
+    installGroupSelectionSync();
 
     canvas.addEventListener("pointerdown", event => {
-        // TransformControls owns the pointer while a gizmo interaction is active.
-        // Never let the scene raycaster deselect the object underneath a gizmo.
         const tc = getTransform();
         if (event.button !== 0 || isDraggingTransform() || tc?.axis) return;
 
@@ -114,6 +121,18 @@ export function setupSelection(renderer, camera, scene) {
     canvas.addEventListener("pointercancel", cancelBoxSelection);
 }
 
+function installGroupSelectionSync() {
+    if (groupSyncInstalled) return;
+    groupSyncInstalled = true;
+    window.addEventListener("editor:group-selection-sync", event => {
+        const detail = event.detail || {};
+        const objects = normalizeObjects(detail.objects || []);
+        if (detail.mode === "single" && objects[0]) selectObject(objects[0]);
+        else if (detail.mode === "multiple") selectMultiple(objects);
+        else clearSelection();
+    });
+}
+
 function pick(event, camera, scene) {
     const rect = selectionCanvas.getBoundingClientRect();
     mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
@@ -127,7 +146,7 @@ function pick(event, camera, scene) {
     return null;
 }
 
-function startBoxSelection(event, camera) {
+function startBoxSelection(event) {
     boxDragging = true;
     boxStart = { x: event.clientX, y: event.clientY };
     selectionCanvas.setPointerCapture?.(event.pointerId);
@@ -169,7 +188,7 @@ function finishBoxSelection(event, camera, scene) {
     }
 
     removeBoxElement();
-    if (picked.length) selectMultiple(picked);
+    if (picked.length) selectMultiple(picked, { highlight: true });
     else if (!(event.ctrlKey || event.metaKey)) clearSelection();
 }
 
@@ -186,11 +205,15 @@ function removeBoxElement() {
     boxStart = null;
 }
 
+function normalizeObjects(objects) {
+    return [...new Set((objects || []).filter(object => object?.userData?.editorObject && !object?.userData?.editorOnly))];
+}
+
 function findSelectableRoot(object, scene) {
     let current = object;
     let candidate = null;
     while (current && current !== scene) {
-        if (current.userData?.selectable === true) candidate = current;
+        if (current.userData?.selectable === true || current.userData?.editorGroup === true) candidate = current;
         current = current.parent;
     }
     return candidate;
