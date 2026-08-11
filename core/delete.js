@@ -1,72 +1,42 @@
-import {
-    getSelected,
-    clearSelection
-} from "./selection.js";
-
-import {
-    removeObject,
-    addObject
-} from "./objectManager.js";
-
-import {
-    addToHierarchy,
-    removeFromHierarchy
-} from "../ui/hierarchy.js";
-
-import { pushHistory }
-    from "./history.js";
-
-import { updateInspector }
-    from "../ui/inspector.js";
-
-import { highlight }
-    from "./highlight.js";
+import { getSelected, clearSelection } from "./selection.js";
+import { removeObject, addObject } from "./objectManager.js";
+import { rebuildHierarchy } from "../ui/hierarchy.js";
+import { pushHistory } from "./history.js";
+import { updateInspector } from "../ui/inspector.js";
+import { highlight } from "./highlight.js";
 
 export function setupDelete(scene) {
-
-    window.addEventListener("keydown", (event) => {
-
+    window.addEventListener("keydown", event => {
         if (event.key !== "Delete") return;
+        const target = event.target;
+        if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement) return;
 
         const selected = getSelected();
+        if (!selected || !selected.parent) return;
 
-        if (!selected) return;
+        const parent = selected.parent;
+        const index = parent.children.indexOf(selected);
 
-        // History Save
+        removeObject(scene, selected);
+        clearSelection();
+        highlight(null);
+        updateInspector(null);
+        rebuildHierarchy();
+
         pushHistory({
-
             undo() {
-
-                addObject(scene, selected);
-
-                addToHierarchy(selected);
-
+                if (parent === scene) addObject(scene, selected);
+                else parent.add(selected);
+                if (index >= 0 && index < parent.children.length - 1) parent.children.splice(parent.children.indexOf(selected), 1), parent.children.splice(index, 0, selected);
+                rebuildHierarchy();
             },
-
             redo() {
-
                 removeObject(scene, selected);
-
-                removeFromHierarchy(selected);
-
+                clearSelection();
+                rebuildHierarchy();
             }
-
         });
 
-        // Delete
-        removeObject(scene, selected);
-
-        removeFromHierarchy(selected);
-            clearSelection();
-        highlight(null);
-
-        updateInspector(null);
-
-        console.log(
-            "Deleted :",
-            selected.name
-        );
-
+        window.dispatchEvent(new CustomEvent("editor:status", { detail: `Deleted ${selected.name || selected.type}` }));
     });
-
 }
