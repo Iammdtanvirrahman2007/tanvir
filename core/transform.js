@@ -5,6 +5,7 @@ import { refreshInspector } from "../ui/inspector.js";
 
 let transform = null;
 let snapEnabled = false;
+let snapValues = { translation: 1, rotation: 15, scale: 0.1 };
 let startState = null;
 
 export function setupTransform(camera, renderer, scene, orbitControls) {
@@ -12,24 +13,23 @@ export function setupTransform(camera, renderer, scene, orbitControls) {
     transform.setMode("translate");
     transform.setSize(0.85);
     scene.add(transform.getHelper());
+    applySnapSettings();
 
     transform.addEventListener("dragging-changed", event => {
         if (orbitControls) orbitControls.enabled = !event.value;
         const object = transform.object;
         if (!object) return;
-
         if (event.value) {
             startState = capture(object);
             return;
         }
-
         const endState = capture(object);
         if (!startState || statesEqual(startState, endState)) {
             startState = null;
             return;
         }
-
         pushHistory({
+            label: `${transform.mode} transform`,
             undo: () => { restore(object, startState); refreshInspector(); },
             redo: () => { restore(object, endState); refreshInspector(); }
         });
@@ -38,10 +38,7 @@ export function setupTransform(camera, renderer, scene, orbitControls) {
         dispatchModeChange();
     });
 
-    transform.addEventListener("objectChange", () => {
-        refreshInspector();
-    });
-
+    transform.addEventListener("objectChange", () => refreshInspector());
     return transform;
 }
 
@@ -51,49 +48,56 @@ export function attachTransform(object) {
     refreshInspector();
 }
 
-export function detachTransform() {
-    transform?.detach();
-}
+export function detachTransform() { transform?.detach(); }
 
 export function setTransformMode(mode) {
-    if (!transform) return;
-    if (!["translate", "rotate", "scale"].includes(mode)) return;
+    if (!transform || !["translate", "rotate", "scale"].includes(mode)) return;
     transform.setMode(mode);
     window.dispatchEvent(new CustomEvent("editor:transform-mode", { detail: mode }));
 }
 
-export function getTransformMode() {
-    return transform?.mode || "translate";
+export function getTransformMode() { return transform?.mode || "translate"; }
+
+export function setAxis(axis) {
+    if (!transform || !["X", "Y", "Z", null].includes(axis)) return;
+    transform.setAxis(axis);
+    window.dispatchEvent(new CustomEvent("editor:transform-axis", { detail: axis }));
 }
 
-export function toggleSnap() {
-    if (!transform) return false;
-    snapEnabled = !snapEnabled;
-    transform.setTranslationSnap(snapEnabled ? 1 : null);
-    transform.setRotationSnap(snapEnabled ? THREE.MathUtils.degToRad(15) : null);
-    transform.setScaleSnap(snapEnabled ? 0.1 : null);
+export function getAxis() { return transform?.axis || null; }
+
+export function setSnapEnabled(enabled) {
+    snapEnabled = !!enabled;
+    applySnapSettings();
     window.dispatchEvent(new CustomEvent("editor:snap-change", { detail: snapEnabled }));
     return snapEnabled;
 }
 
-export function isSnapEnabled() {
-    return snapEnabled;
+export function toggleSnap() { return setSnapEnabled(!snapEnabled); }
+export function isSnapEnabled() { return snapEnabled; }
+
+export function setSnapValues(values = {}) {
+    if (Number.isFinite(values.translation) && values.translation > 0) snapValues.translation = values.translation;
+    if (Number.isFinite(values.rotation) && values.rotation > 0) snapValues.rotation = values.rotation;
+    if (Number.isFinite(values.scale) && values.scale > 0) snapValues.scale = values.scale;
+    applySnapSettings();
+    window.dispatchEvent(new CustomEvent("editor:snap-values", { detail: { ...snapValues } }));
+    return { ...snapValues };
 }
 
-export function isDraggingTransform() {
-    return !!transform?.dragging;
-}
+export function getSnapValues() { return { ...snapValues }; }
+export function isDraggingTransform() { return !!transform?.dragging; }
+export function getTransform() { return transform; }
 
-export function getTransform() {
-    return transform;
+function applySnapSettings() {
+    if (!transform) return;
+    transform.setTranslationSnap(snapEnabled ? snapValues.translation : null);
+    transform.setRotationSnap(snapEnabled ? THREE.MathUtils.degToRad(snapValues.rotation) : null);
+    transform.setScaleSnap(snapEnabled ? snapValues.scale : null);
 }
 
 function capture(object) {
-    return {
-        position: object.position.clone(),
-        rotation: object.rotation.clone(),
-        scale: object.scale.clone()
-    };
+    return { position: object.position.clone(), rotation: object.rotation.clone(), scale: object.scale.clone() };
 }
 
 function restore(object, state) {
