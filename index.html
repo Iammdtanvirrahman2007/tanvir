@@ -38,7 +38,8 @@
     <script type="module">
         import { initDeviceExperience } from "./core/deviceExperience.js";
         import { initCommandCenter, openCommandCenter } from "./core/commandCenter.js";
-        const start = () => { initDeviceExperience(); initCommandCenter(); const bindings = [["fileMenuBtn","file"],["editMenuBtn","edit"],["viewMenuBtn","view"],["addMenuBtn","add"],["mobileMoreBtn","more"],["inspectorOptionsBtn","more"]]; bindings.forEach(([id,section]) => document.getElementById(id)?.addEventListener("click", event => { event.stopPropagation(); openCommandCenter(section, event.currentTarget); })); };
+        import { initNumericTransform } from "./core/numericTransform.js";
+        const start = () => { initDeviceExperience(); initCommandCenter(); initNumericTransform(); const bindings = [["fileMenuBtn","file"],["editMenuBtn","edit"],["viewMenuBtn","view"],["addMenuBtn","add"],["mobileMoreBtn","more"],["inspectorOptionsBtn","more"]]; bindings.forEach(([id,section]) => document.getElementById(id)?.addEventListener("click", event => { event.stopPropagation(); openCommandCenter(section, event.currentTarget); })); };
         if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", start, { once: true }); else start();
     </script>
 </body>
