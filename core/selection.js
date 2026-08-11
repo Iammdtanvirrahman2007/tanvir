@@ -121,7 +121,7 @@ export function setupSelection(renderer, camera, scene) {
             const point = { x: event.clientX, y: event.clientY };
             const closeEnough = lastTouchPoint && Math.hypot(point.x - lastTouchPoint.x, point.y - lastTouchPoint.y) < TOUCH_DOUBLE_TAP_DISTANCE;
             if (now - lastTouchTap < TOUCH_DOUBLE_TAP_MS && closeEnough) {
-                const target = pickDeep(event, camera, scene);
+                const target = pickDeep(event, camera, scene, getFocusMode().group || null);
                 if (target) {
                     if (!consumeFocusTarget(target)) {
                         focusObject(target, { duration: 360 });
@@ -150,21 +150,42 @@ export function setupSelection(renderer, camera, scene) {
             return;
         }
         if (event.button !== 0 || isDraggingTransform()) return;
+
+        // Browser dblclick is not guaranteed when another canvas control consumes
+        // the gesture. A second native click (detail === 2) is therefore treated
+        // as the canonical desktop focus gesture.
+        if (event.detail >= 2) {
+            const mode = getFocusMode();
+            const target = pickDeep(event, camera, scene, mode.group || null);
+            if (target) {
+                if (!consumeFocusTarget(target)) {
+                    focusObject(target, { duration: 360 });
+                    window.dispatchEvent(new CustomEvent("editor:status", { detail: `Focused ${target.name || target.type}` }));
+                }
+            }
+            return;
+        }
+
         const target = pick(event, camera, scene);
         const toggle = event.ctrlKey || event.metaKey || event.shiftKey;
         if (target) selectObject(target, { toggle });
         else if (!toggle) clearSelection();
     }, { passive: true });
 
+    // Keep the dblclick event as a second path for browsers that expose it
+    // normally. Capture phase makes the focus gesture independent of overlays
+    // attached later in the DOM.
     canvas.addEventListener("dblclick", event => {
         if (event.pointerType === "touch") return;
+        event.preventDefault();
+        event.stopPropagation();
         const mode = getFocusMode();
         const target = pickDeep(event, camera, scene, mode.group || null);
         if (!target) return;
         if (consumeFocusTarget(target)) return;
         focusObject(target, { duration: 360 });
         window.dispatchEvent(new CustomEvent("editor:status", { detail: `Focused ${target.name || target.type}` }));
-    }, { passive: true });
+    }, { passive: false, capture: true });
 }
 
 function resetPointerState() { pointerStart = null; pointerMoved = false; }
@@ -198,11 +219,15 @@ function pickDeep(event, camera, scene, focusGroup = null) {
         while (current && current !== scene) {
             if (current.isMesh && !current.userData?.editorOnly) firstMesh ||= current;
             if (focusGroup && current === focusGroup) return firstMesh || focusGroup;
-            if (!focusGroup && current.userData?.editorObject && !current.userData?.editorOnly && (current.isMesh || current.userData?.selectable === true)) {
-                return current;
+            if (!focusGroup && current.userData?.editorObject && !current.userData?.editorOnly) {
+                if (current.isMesh || current.userData?.selectable === true) return current;
             }
             current = current.parent;
         }
+        // A rendered mesh is itself a valid focus target even when imported
+        // geometry did not receive editorObject metadata. This is what makes
+        // double-click focus reliable for imported/grouped meshes.
+        if (!focusGroup && firstMesh) return firstMesh;
     }
     return null;
 }
