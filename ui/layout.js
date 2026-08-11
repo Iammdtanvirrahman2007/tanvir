@@ -1,37 +1,24 @@
 export function createLayout() {
+    const elements = {
+        topbar: document.getElementById("topbar"),
+        editor: document.getElementById("editor"),
+        leftPanel: document.getElementById("leftPanel"),
+        viewport: document.getElementById("viewport"),
+        rightPanel: document.getElementById("rightPanel"),
+        bottomToolbar: document.getElementById("bottomToolbar"),
+        statusBar: document.getElementById("statusBar")
+    };
 
-    const app = document.getElementById("app");
-
-    app.innerHTML = `
-        <div id="toolbar">
-            <div class="logo">🚀 ModelForge 3D</div>
-
-            <div class="menus">
-                <button>File</button>
-                <button>Edit</button>
-                <button>Add</button>
-                <button>View</button>
-                <button>Help</button>
-            </div>
-        </div>
-
-        <div id="workspace">
-
-            <div id="left-panel">
-                <h3>Scene</h3>
-            </div>
-
-            <div id="viewport"></div>
-
-            <div id="right-panel">
-                <h3>Inspector</h3>
-            </div>
-
-        </div>
-
-        <div id="statusbar">
-            Ready
-        </div>
-    `;
-
+    return {
+        ...elements,
+        refresh() {
+            window.dispatchEvent(new Event("resize"));
+        },
+        setLeftPanelVisible(visible) {
+            if (elements.leftPanel) elements.leftPanel.hidden = !visible;
+        },
+        setRightPanelVisible(visible) {
+            if (elements.rightPanel) elements.rightPanel.hidden = !visible;
+        }
+    };
 }
