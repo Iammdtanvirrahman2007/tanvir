@@ -9,6 +9,7 @@ export function duplicateObject(object, scene) {
     clone.position.add(new THREE.Vector3(0.5, 0.5, 0.5));
     clone.userData = { ...object.userData, modelingSource: object.uuid };
     markEditorObject(clone);
+    ensureDescendantNames(clone, scene, clone.name);
     scene.add(clone);
     pushHistory({ label: "Duplicate object", undo: () => scene.remove(clone), redo: () => scene.add(clone) });
     refreshInspector();
@@ -44,6 +45,7 @@ export function arrayDuplicate(object, scene, count = 3, offset = { x: 2, y: 0, 
         clone.position.copy(object.position).add(new THREE.Vector3(offset.x * i, offset.y * i, offset.z * i));
         clone.userData = { ...object.userData, modelingSource: object.uuid, editorObject: true };
         markEditorObject(clone);
+        ensureDescendantNames(clone, scene, clone.name);
         scene.add(clone);
         created.push(clone);
     }
@@ -55,6 +57,7 @@ export function arrayDuplicate(object, scene, count = 3, offset = { x: 2, y: 0, 
     });
     refreshInspector();
     dispatch("editor:modeling-change", { action: "array", object, created, count, offset });
+    window.dispatchEvent(new CustomEvent("editor:hierarchy-refresh"));
     return created;
 }
 
@@ -87,6 +90,20 @@ function markEditorObject(object) {
     });
 }
 
+function ensureDescendantNames(root, scene, rootName) {
+    let index = 1;
+    root.traverse(child => {
+        if (child === root) return;
+        const current = String(child.name || "").trim();
+        if (current) {
+            child.name = uniqueName(current, scene, child);
+            return;
+        }
+        child.name = uniqueName(`${rootName}.Part.${String(index).padStart(3, "0")}`, scene, child);
+        index++;
+    });
+}
+
 function captureTransform(object) {
     return { position: object.position.clone(), rotation: object.rotation.clone(), scale: object.scale.clone() };
 }
@@ -99,10 +116,13 @@ function applyTransform(object, transform) {
     object.updateMatrixWorld(true);
 }
 
-function uniqueName(base, scene) {
+function uniqueName(base, scene, ignoredObject = null) {
     const clean = String(base || "Object").trim() || "Object";
     const names = new Set();
-    scene.traverse(item => { if (item.name?.trim()) names.add(item.name.trim()); });
+    scene.traverse(item => {
+        if (item === ignoredObject) return;
+        if (item.name?.trim()) names.add(item.name.trim());
+    });
     if (!names.has(clean)) return clean;
     let i = 1;
     while (names.has(`${clean}.${String(i).padStart(3, "0")}`)) i++;
