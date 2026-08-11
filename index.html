@@ -2,19 +2,14 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <meta name="theme-color" content="#17181c">
     <meta name="author" content="Md. Tanvir Rahman">
     <title>ModelForge 3D</title>
     <link rel="icon" href="favicon.svg" type="image/svg+xml">
     <link rel="stylesheet" href="style.css">
     <script type="importmap">
-    {
-        "imports": {
-            "three": "https://unpkg.com/three@0.181.1/build/three.module.js",
-            "three/addons/": "https://unpkg.com/three@0.181.1/examples/jsm/"
-        }
-    }
+    {"imports":{"three":"https://unpkg.com/three@0.181.1/build/three.module.js","three/addons/":"https://unpkg.com/three@0.181.1/examples/jsm/"}}
     </script>
 </head>
 <body>
@@ -23,10 +18,10 @@
         <nav class="app-menu" aria-label="Application menu">
             <button class="menu-item" id="fileMenuBtn">File</button><button class="menu-item" id="editMenuBtn">Edit</button><button class="menu-item" id="viewMenuBtn">View</button><button class="menu-item" id="addMenuBtn">Add</button>
         </nav>
-        <div class="top-actions"><button class="icon-btn" id="undoBtn" title="Undo (Ctrl+Z)">↶</button><button class="icon-btn" id="redoBtn" title="Redo (Ctrl+Y)">↷</button><span class="toolbar-divider"></span><button class="action-btn" id="loadBtn">Open</button><button class="action-btn primary" id="saveBtn">Save</button><button class="action-btn" id="exportBtn">Export</button><button class="action-btn" id="uploadBtn">Part</button></div>
+        <div class="top-actions"><button class="icon-btn mobile-panel-btn" id="mobileSceneBtn" title="Scene">☷</button><button class="icon-btn mobile-panel-btn" id="mobileInspectorBtn" title="Inspector">◇</button><button class="icon-btn" id="undoBtn" title="Undo (Ctrl+Z)">↶</button><button class="icon-btn" id="redoBtn" title="Redo (Ctrl+Y)">↷</button><span class="toolbar-divider"></span><button class="action-btn" id="loadBtn">Open</button><button class="action-btn primary" id="saveBtn">Save</button><button class="action-btn" id="exportBtn">Export</button><button class="action-btn" id="uploadBtn">Part</button></div>
     </header>
-
     <div id="menuPopover" class="menu-popover" hidden></div>
+    <div id="mobileBackdrop" hidden></div>
 
     <main id="editor">
         <aside id="leftPanel" class="panel">
@@ -53,7 +48,6 @@
     </main>
 
     <div id="bottomToolbar"><div class="tool-group"><button id="selectBtn" class="tool-btn active" title="Select (W)">↖ <span>Select</span></button><button id="moveBtn" class="tool-btn" title="Move (G)">✥ <span>Move</span></button><button id="rotateBtn" class="tool-btn" title="Rotate (R)">⟳ <span>Rotate</span></button><button id="scaleBtn" class="tool-btn" title="Scale (S)">⌗ <span>Scale</span></button></div><span class="toolbar-divider"></span><div class="tool-group"><button id="snapBtn" class="tool-btn">Snap Off</button><button id="groupBtn" class="tool-btn">Group</button><button id="ungroupBtn" class="tool-btn">Ungroup</button></div></div>
-
     <footer id="statusBar"><div class="status-left"><span class="status-indicator"></span><span id="statusText">Ready</span></div><div class="status-center">ModelForge 3D · Created by Md. Tanvir Rahman</div><div class="status-right"><span>Objects <strong id="objectCount">0</strong></span><span>FPS <strong id="fpsCounter">--</strong></span></div></footer>
     <input id="fileInput" type="file" accept=".glb,.gltf" hidden>
     <script type="module" src="main.js"></script>
