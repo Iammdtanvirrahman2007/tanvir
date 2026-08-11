@@ -1,4 +1,4 @@
-import { scene, grid, resetCamera, camera, controls } from "./scene.js";
+import { scene, grid, resetCamera, camera, controls } from "./scene.js?v=20260811-runtime-fix";
 import { saveScene } from "./save.js";
 import { downloadGLTF } from "./exporter.js";
 import { undo, redo } from "./history.js";
@@ -29,15 +29,8 @@ export function openCommandCenter(section = "add", anchor = null) {
     if (!host) initCommandCenter();
     renderSection(section);
     const rect = anchor?.getBoundingClientRect?.();
-    if (window.innerWidth <= 760 || !rect) {
-        panel.style.left = "50%";
-        panel.style.top = "50%";
-        panel.style.transform = "translate(-50%, -50%)";
-    } else {
-        panel.style.left = `${Math.min(rect.left, window.innerWidth - 310)}px`;
-        panel.style.top = `${Math.min(rect.bottom + 6, window.innerHeight - 390)}px`;
-        panel.style.transform = "none";
-    }
+    if (window.innerWidth <= 760 || !rect) { panel.style.left = "50%"; panel.style.top = "50%"; panel.style.transform = "translate(-50%, -50%)"; }
+    else { panel.style.left = `${Math.min(rect.left, window.innerWidth - 310)}px`; panel.style.top = `${Math.min(rect.bottom + 6, window.innerHeight - 390)}px`; panel.style.transform = "none"; }
     panel.hidden = false;
     host.querySelector("#commandCenterBackdrop").hidden = false;
 }
@@ -57,9 +50,7 @@ function renderSection(section) {
     list.querySelectorAll("[data-command-index]").forEach(button => button.addEventListener("click", () => commands[Number(button.dataset.commandIndex)].run()));
 }
 
-function addCommands() {
-    return ["cube", "sphere", "cylinder", "cone", "plane"].map(type => ({ icon: "◇", label: type[0].toUpperCase() + type.slice(1), detail: "Create a new editor object", run: () => add(type) }));
-}
+function addCommands() { return ["cube", "sphere", "cylinder", "cone", "plane"].map(type => ({ icon: "◇", label: type[0].toUpperCase() + type.slice(1), detail: "Create a new editor object", run: () => add(type) })); }
 
 function fileCommands() {
     return [
@@ -122,10 +113,7 @@ function add(type) {
 
 function newScene() {
     if (!confirm("Clear all editable objects from this scene?")) return;
-    scene.children.filter(object => object.userData?.editorObject && !object.userData?.editorOnly).slice().forEach(object => {
-        removeObject(scene, object);
-        removeFromHierarchy(object);
-    });
+    scene.children.filter(object => object.userData?.editorObject && !object.userData?.editorOnly).slice().forEach(object => { removeObject(scene, object); removeFromHierarchy(object); });
     clearSelection();
     rebuildHierarchy();
     updateInspector(null);
