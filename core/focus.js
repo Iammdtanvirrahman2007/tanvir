@@ -51,16 +51,16 @@ export function consumeFocusTarget(object) {
     if (!object) return false;
     if (pendingMode === "select" && pendingGroup) {
         let current = object;
-        let inside = false;
-        while (current) {
-            if (current === pendingGroup) { inside = true; break; }
-            current = current.parent;
+        while (current && current !== pendingGroup) current = current.parent;
+        if (current !== pendingGroup) {
+            window.dispatchEvent(new CustomEvent("editor:status", { detail: `Select an item inside ${pendingGroup.name || "the group"}` }));
+            return true;
         }
-        if (!inside) return false;
         pendingGroup = null;
         pendingMode = null;
         focusObject(object, { duration: 360 });
         window.dispatchEvent(new CustomEvent("editor:focus-mode", { detail: { group: null, mode: null } }));
+        window.dispatchEvent(new CustomEvent("editor:status", { detail: `Focused ${object.name || object.type}` }));
         return true;
     }
     return false;
@@ -78,7 +78,7 @@ export function getFocusMode() {
 
 function focusPoint(target, object, options) {
     const duration = Math.max(0, Number(options.duration ?? 420));
-    const offset = options.offset instanceof THREE.Vector3 ? options.offset.clone() : getCameraOffset(object, target);
+    const offset = options.offset instanceof THREE.Vector3 ? options.offset.clone() : getCameraOffset(object);
     const endPosition = target.clone().add(offset);
     cancelAnimationFrame(animationFrame);
 
@@ -104,7 +104,7 @@ function focusPoint(target, object, options) {
     return true;
 }
 
-function getCameraOffset(object, target) {
+function getCameraOffset(object) {
     const currentOffset = camera.position.clone().sub(controls.target);
     if (currentOffset.lengthSq() > 0.0001) {
         const size = new THREE.Box3().setFromObject(object).getSize(new THREE.Vector3());
