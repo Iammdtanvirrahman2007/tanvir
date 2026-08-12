@@ -197,7 +197,7 @@ export function getTransformSpace() { return spaceMode; }
 
 export function setAxis(axis) {
     if (!transform || !["X", "Y", "Z", null].includes(axis)) return;
-    transform.setAxis(axis);
+    transform.axis = axis;
     window.dispatchEvent(new CustomEvent("editor:transform-axis", { detail: axis }));
 }
 
