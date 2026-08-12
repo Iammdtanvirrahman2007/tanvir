@@ -20,6 +20,8 @@
     }
     import('./rocket/nodeModelFollow.js?v=20260812-node-follow-3')
       .catch(error => console.warn('ModelForge node follow failed:', error));
+    import('./rocket/nodeVectorRestore.js?v=20260812-node-vector-1')
+      .catch(error => console.warn('ModelForge node vector failed:', error));
   };
 
   if (document.readyState === 'loading') {
