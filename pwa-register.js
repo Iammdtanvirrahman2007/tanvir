@@ -18,9 +18,9 @@
         })
         .catch(error => console.warn('ModelForge PWA registration failed:', error));
     }
-    import('./rocket/nodeModelFollow.js?v=20260812-node-follow-4')
+    import('./rocket/nodeModelFollow.js?v=20260812-node-follow-5')
       .catch(error => console.warn('ModelForge node follow failed:', error));
-    import('./rocket/nodeVectorRestore.js?v=20260812-node-vector-2')
+    import('./rocket/nodeVectorRestore.js?v=20260812-node-vector-3')
       .catch(error => console.warn('ModelForge node vector failed:', error));
   };
 
