@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import { createAttachmentNode, readRocketPart, updateRocketPart } from "./rocketPart.js";
-import { selectObject, clearSelection } from "../core/selection.js";
+import { selectObject, clearSelection, getSelected } from "../core/selection.js";
 
 let sceneRef = null;
 let activeNodeId = null;
@@ -28,8 +28,7 @@ export function initAttachmentNodeEditor(scene) {
         } else {
             setNodeEditMode(false);
             activeNodeId = null;
-            setNodeObjectsVisible(false);
-            clearNodeObjects();
+            setNodeObjectsVisible(nodesVisible);
         }
     });
 
@@ -133,6 +132,7 @@ export function clearAttachmentNodeSelection() {
 
 export function addAttachmentNode(source = {}) {
     if (!sceneRef) return null;
+    const parent = getModelRoot() || sceneRef;
     const current = getAttachmentNodes();
     const node = createAttachmentNode({
         name: source.name || `Node ${current.length + 1}`,
@@ -144,7 +144,7 @@ export function addAttachmentNode(source = {}) {
     });
 
     updateRocketPart(sceneRef, { attachmentNodes: [...current, node] });
-    createNodeObject(node);
+    createNodeObject(node, parent);
     setNodeObjectsVisible(nodesVisible);
     activeNodeId = node.id;
     if (!nodeEditMode) setNodeEditMode(true);
@@ -189,8 +189,18 @@ export function removeAttachmentNode(nodeId) {
 
 export function refreshAttachmentNodeHelpers() { rebuildNodeObjects(); }
 
-function createNodeObject(node) {
+function getModelRoot() {
     if (!sceneRef) return null;
+    const selected = getSelected?.();
+    if (selected && !selected.userData?.attachmentNode && !selected.userData?.editorOnly) return selected;
+    return sceneRef.children.find(object => object.userData?.editorObject && !object.userData?.attachmentNode && !object.userData?.editorOnly)
+        || sceneRef.children.find(object => !object.userData?.attachmentNode && !object.userData?.editorOnly && object !== sceneRef)
+        || null;
+}
+
+function createNodeObject(node, preferredParent = null) {
+    if (!sceneRef) return null;
+    const parent = preferredParent || getModelRoot() || sceneRef;
     const object = new THREE.Mesh(
         new THREE.SphereGeometry(0.14, 24, 16),
         new THREE.MeshBasicMaterial({ color: 0x67d4ff, depthTest: false, depthWrite: false })
@@ -205,10 +215,10 @@ function createNodeObject(node) {
         editorOnly: false
     };
     object.renderOrder = 1200;
-    sceneRef.add(object);
+    parent.add(object);
 
     const arrow = new THREE.ArrowHelper(
-        normalizeDirection(node.direction || [0, 1, 0]) && new THREE.Vector3(0, 1, 0),
+        new THREE.Vector3(0, 1, 0),
         new THREE.Vector3(0, 0, 0),
         0.55,
         0x67d4ff,
@@ -252,6 +262,14 @@ function rebuildNodeObjects() {
     highlightNodes();
 }
 
+function setNodeObjectsVisible(visible) {
+    for (const object of nodeObjects.values()) {
+        object.visible = !!visible;
+        const arrow = object.children.find(child => child.userData?.attachmentNodeArrow);
+        if (arrow) arrow.visible = !!visible;
+    }
+}
+
 function clearNodeObjects() {
     for (const object of nodeObjects.values()) {
         object.parent?.remove(object);
@@ -260,26 +278,30 @@ function clearNodeObjects() {
     nodeObjects.clear();
 }
 
-function setNodeObjectsVisible(visible) {
-    for (const object of nodeObjects.values()) object.visible = !!visible;
-}
-
 function applyMetadataToObject(node) {
     const object = nodeObjects.get(node.id);
     if (!object || syncing) return;
     syncing = true;
     try {
         object.name = node.name || `Node ${node.id}`;
-        object.position.set(
-            Number(node.position?.[0] || 0),
-            Number(node.position?.[1] || 0),
-            Number(node.position?.[2] || 0)
-        );
-        object.rotation.set(
+        object.updateMatrixWorld(true);
+
+        const desiredWorldPosition = new THREE.Vector3(...normalizeVector(node.position));
+        const desiredWorldQuaternion = new THREE.Quaternion().setFromEuler(new THREE.Euler(
             THREE.MathUtils.degToRad(Number(node.rotation?.[0] || 0)),
             THREE.MathUtils.degToRad(Number(node.rotation?.[1] || 0)),
-            THREE.MathUtils.degToRad(Number(node.rotation?.[2] || 0))
-        );
+            THREE.MathUtils.degToRad(Number(node.rotation?.[2] || 0)),
+            "XYZ"
+        ));
+
+        const parent = object.parent || sceneRef;
+        parent.updateWorldMatrix(true, true);
+        object.position.copy(parent.worldToLocal(desiredWorldPosition.clone()));
+
+        const parentWorldQuaternion = new THREE.Quaternion();
+        parent.getWorldQuaternion(parentWorldQuaternion);
+        object.quaternion.copy(parentWorldQuaternion.invert().multiply(desiredWorldQuaternion));
+        object.scale.set(1, 1, 1);
         updateNodeArrowVisual(object, node);
         object.updateMatrixWorld(true);
     } finally { syncing = false; }
@@ -292,18 +314,24 @@ function syncNodeFromObject(object) {
     const index = current.findIndex(n => n.id === nodeId);
     if (index < 0) return;
 
+    object.updateWorldMatrix(true, true);
+    const worldPosition = new THREE.Vector3();
+    const worldQuaternion = new THREE.Quaternion();
+    object.getWorldPosition(worldPosition);
+    object.getWorldQuaternion(worldQuaternion);
+    const euler = new THREE.Euler().setFromQuaternion(worldQuaternion, "XYZ");
+
     const next = current.slice();
-    const euler = new THREE.Euler().setFromQuaternion(object.quaternion, "XYZ");
     next[index] = {
         ...current[index],
         name: object.name,
-        position: [object.position.x, object.position.y, object.position.z],
+        position: worldPosition.toArray(),
         rotation: [
             THREE.MathUtils.radToDeg(euler.x),
             THREE.MathUtils.radToDeg(euler.y),
             THREE.MathUtils.radToDeg(euler.z)
         ],
-        direction: directionFromQuaternion(object.quaternion)
+        direction: new THREE.Vector3(0, 1, 0).applyQuaternion(object.quaternion).normalize().toArray()
     };
 
     syncing = true;
@@ -323,6 +351,7 @@ function updateNodeArrowVisual(object, node) {
     arrow.line?.material?.color?.setHex(color);
     arrow.cone?.material?.color?.setHex(color);
     arrow.setDirection(normalizeDirection(node.direction || [0, 1, 0]));
+    arrow.visible = nodesVisible;
 }
 
 function directionFromQuaternion(quaternion) {
