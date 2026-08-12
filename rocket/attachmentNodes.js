@@ -8,12 +8,14 @@ let activeNodeId = null;
 let initialized = false;
 let syncing = false;
 let nodeTransformActive = false;
+let nodeEditMode = false;
 const nodeObjects = new Map();
 
 export function initAttachmentNodeEditor(scene) {
     sceneRef = scene;
     if (!sceneRef || initialized) return;
     initialized = true;
+    window.__modelForgeNodeEditMode = false;
     ensureModelRootMetadata();
     rebuildNodeObjects();
 
@@ -22,6 +24,7 @@ export function initAttachmentNodeEditor(scene) {
             ensureModelRootMetadata();
             rebuildNodeObjects();
         } else {
+            setNodeEditMode(false);
             activeNodeId = null;
         }
     });
@@ -67,6 +70,29 @@ export function initAttachmentNodeEditor(scene) {
     });
 }
 
+export function isNodeEditMode() { return nodeEditMode; }
+
+export function setNodeEditMode(enabled) {
+    nodeEditMode = !!enabled;
+    window.__modelForgeNodeEditMode = nodeEditMode;
+
+    if (!nodeEditMode && activeNodeId) {
+        const selected = nodeObjects.get(activeNodeId);
+        if (selected) selected.material?.color?.setHex(0x67d4ff);
+        activeNodeId = null;
+        syncing = true;
+        try { clearSelection(); } finally { syncing = false; }
+    }
+
+    highlightNodes();
+    window.dispatchEvent(new CustomEvent("editor:attachment-node-mode", { detail: nodeEditMode }));
+    return nodeEditMode;
+}
+
+export function toggleNodeEditMode() {
+    return setNodeEditMode(!nodeEditMode);
+}
+
 export function getModelRoot() {
     if (!sceneRef) return null;
     const uuid = readRocketPart(sceneRef)?.coordinateSystem?.modelRootUUID;
@@ -91,6 +117,7 @@ export function getAttachmentNodes() { return readRocketPart(sceneRef)?.attachme
 export function getActiveAttachmentNodeId() { return activeNodeId; }
 
 export function selectAttachmentNode(nodeId) {
+    if (!nodeEditMode) return null;
     const object = nodeObjects.get(nodeId);
     if (!object) return null;
     activeNodeId = nodeId;
@@ -124,6 +151,7 @@ export function addAttachmentNode(source = {}) {
     createNodeObject(node);
     activeNodeId = node.id;
     highlightNodes();
+    setNodeEditMode(true);
     selectAttachmentNode(node.id);
     dispatchNodeChange(node, false);
     return node;
@@ -221,6 +249,7 @@ function applyMetadataToObject(node) {
 }
 
 function syncNodeFromObject(object) {
+    if (!nodeEditMode) return;
     const nodeId = object.userData?.attachmentNodeId;
     const current = getAttachmentNodes();
     const index = current.findIndex(n => n.id === nodeId);
@@ -246,7 +275,7 @@ function syncNodeFromObject(object) {
 
 function highlightNodes() {
     for (const [id, object] of nodeObjects) {
-        if (object.material?.color) object.material.color.setHex(id === activeNodeId ? 0xffc857 : 0x67d4ff);
+        if (object.material?.color) object.material.color.setHex(id === activeNodeId && nodeEditMode ? 0xffc857 : 0x67d4ff);
     }
 }
 
