@@ -18,10 +18,10 @@
         })
         .catch(error => console.warn('ModelForge PWA registration failed:', error));
     }
-    import('./rocket/nodeModelFollow.js?v=20260812-node-follow-5')
+    import('./rocket/nodeModelFollow.js?v=20260812-node-follow-6')
       .catch(error => console.warn('ModelForge node follow failed:', error));
-    import('./rocket/nodeVectorRestore.js?v=20260812-node-vector-3')
-      .catch(error => console.warn('ModelForge node vector failed:', error));
+    import('./rocket/nodeVectorRenderer.js?v=20260812-node-vector-render-1')
+      .catch(error => console.warn('ModelForge node vector renderer failed:', error));
   };
 
   if (document.readyState === 'loading') {
