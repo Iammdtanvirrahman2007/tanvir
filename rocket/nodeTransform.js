@@ -11,11 +11,15 @@ let active = false;
 let mode = "translate";
 let proxy = null;
 let canvas = null;
+let cameraRef = null;
+let nodeGizmoRaycaster = new THREE.Raycaster();
+let nodeGizmoPointerActive = false;
 
 export function initNodeTransform(scene, renderer, camera, orbit = null) {
     if (controls || !scene || !renderer || !camera) return;
     sceneRef = scene;
     canvas = renderer.domElement;
+    cameraRef = camera;
     orbitControls = orbit || defaultOrbitControls || null;
 
     controls = new TransformControls(camera, canvas);
@@ -34,18 +38,16 @@ export function initNodeTransform(scene, renderer, camera, orbit = null) {
     proxy.visible = false;
     scene.add(proxy);
 
-    // OrbitControls and TransformControls share the same canvas. OrbitControls
-    // sees pointerdown before TransformControls decides that a gizmo drag has
-    // started. Disable orbit in the capture phase so the camera never starts
-    // rotating underneath a selected node.
-    canvas.addEventListener("pointerdown", event => {
-        if (!active || event.button !== 0) return;
-        if (orbitControls) orbitControls.enabled = false;
-    }, true);
+    // Behave like the normal object gizmo: background drags are still owned by
+    // OrbitControls, but a drag that starts on a node transform handle is
+    // reserved for TransformControls. We only disable orbit for that gesture,
+    // before OrbitControls receives the same pointerdown.
+    canvas.addEventListener("pointerdown", onCanvasPointerDownCapture, true);
+    canvas.addEventListener("pointerup", onCanvasPointerUpCapture, true);
+    canvas.addEventListener("pointercancel", onCanvasPointerUpCapture, true);
 
     controls.addEventListener("dragging-changed", event => {
-        // Camera orbit remains disabled for the entire node-edit session.
-        if (orbitControls) orbitControls.enabled = false;
+        if (event.value && orbitControls) orbitControls.enabled = false;
         window.dispatchEvent(new CustomEvent("editor:rocket-node-transform", {
             detail: { active: !!event.value, mode, nodeId: getActiveAttachmentNodeId() }
         }));
@@ -69,7 +71,6 @@ export function setNodeTransformMode(next) {
     mode = next;
     controls.setMode(mode);
     controls.setSpace("local");
-    if (active && orbitControls) orbitControls.enabled = false;
     updateTransformLabel();
 }
 
@@ -82,7 +83,7 @@ function attachNode(nodeId) {
     if (!node || !modelRoot) return detachNode();
 
     setTransformEnabled(false);
-    if (orbitControls) orbitControls.enabled = false;
+    if (orbitControls) orbitControls.enabled = true;
 
     modelRoot.updateWorldMatrix(true, true);
     const nodeLocal = new THREE.Matrix4();
@@ -110,6 +111,7 @@ function attachNode(nodeId) {
 
 function detachNode() {
     active = false;
+    nodeGizmoPointerActive = false;
     controls?.detach();
     if (controls) {
         controls.enabled = false;
@@ -121,6 +123,32 @@ function detachNode() {
         detail: { active: false, mode, nodeId: null }
     }));
     updateTransformLabel();
+}
+
+function onCanvasPointerDownCapture(event) {
+    if (!active || !controls?.enabled || event.button !== 0 || !canvas || !cameraRef) return;
+
+    const rect = canvas.getBoundingClientRect();
+    if (!rect.width || !rect.height) return;
+
+    const pointer = new THREE.Vector2(
+        ((event.clientX - rect.left) / rect.width) * 2 - 1,
+        -((event.clientY - rect.top) / rect.height) * 2 + 1
+    );
+
+    nodeGizmoRaycaster.setFromCamera(pointer, cameraRef);
+    const helper = controls.getHelper();
+    const hits = helper ? nodeGizmoRaycaster.intersectObject(helper, true) : [];
+    if (!hits.length) return;
+
+    nodeGizmoPointerActive = true;
+    if (orbitControls) orbitControls.enabled = false;
+}
+
+function onCanvasPointerUpCapture() {
+    if (!nodeGizmoPointerActive) return;
+    nodeGizmoPointerActive = false;
+    if (orbitControls && active && !controls?.dragging) orbitControls.enabled = true;
 }
 
 function syncNodeFromProxy() {
