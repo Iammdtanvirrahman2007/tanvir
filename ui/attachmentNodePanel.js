@@ -15,7 +15,13 @@ export function initAttachmentNodePanel() {
     if (installed) return;
     installed = true;
     window.addEventListener("editor:rocket-part-mode", event => { if (event.detail) render(); });
-    window.addEventListener("editor:rocket-node-change", render);
+    window.addEventListener("editor:rocket-node-change", event => {
+        if (event.detail?.transforming) {
+            updateActiveNodePosition(event.detail.node);
+        } else {
+            render();
+        }
+    });
     window.addEventListener("editor:attachment-node-selected", render);
     render();
 }
@@ -46,6 +52,7 @@ function render() {
     nodes.forEach(node => {
         const item = document.createElement("div");
         item.className = `rocket-node-foundation-item${node.id === activeId ? " active" : ""}`;
+        item.dataset.nodeId = node.id;
         const position = Array.isArray(node.position) ? node.position : [0, 0, 0];
         const type = NODE_TYPES.includes(node.type) ? node.type : "custom";
         item.innerHTML = `
@@ -53,7 +60,7 @@ function render() {
                 <span class="node-dot"></span>
                 <span class="node-copy"><strong>${escapeHtml(node.name || node.id)}</strong><small>${escapeHtml(type)}</small></span>
             </button>
-            <span class="rocket-node-position">(${fmt(position[0])}, ${fmt(position[1])}, ${fmt(position[2])})</span>
+            <span class="rocket-node-position" data-position>(${fmt(position[0])}, ${fmt(position[1])}, ${fmt(position[2])})</span>
             <button type="button" class="rocket-node-delete" data-delete aria-label="Delete node">×</button>
         `;
         item.querySelector("[data-select]").addEventListener("click", () => selectAttachmentNode(node.id));
@@ -69,6 +76,16 @@ function render() {
         : `<span>No attachment nodes yet. Click <strong>+ Add Node</strong> to create the first one.</span>`;
 
     host.querySelector("[data-add]").addEventListener("click", () => addAttachmentNode());
+}
+
+function updateActiveNodePosition(node) {
+    if (!node || !host) return;
+    const item = host.querySelector(`[data-node-id="${CSS.escape(node.id)}"]`);
+    const position = item?.querySelector("[data-position]");
+    if (position) {
+        const p = node.position || [0, 0, 0];
+        position.textContent = `(${fmt(p[0])}, ${fmt(p[1])}, ${fmt(p[2])})`;
+    }
 }
 
 function fmt(value) { return Number.isFinite(Number(value)) ? Number(value).toFixed(2) : "0.00"; }
