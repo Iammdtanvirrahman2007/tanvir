@@ -1,8 +1,13 @@
 (() => {
   const register = () => {
     if (!('serviceWorker' in navigator)) return;
-    navigator.serviceWorker.register('./sw.js', { scope: './' })
+
+    const swUrl = '/tanvir/sw.js';
+    const scope = '/tanvir/';
+
+    navigator.serviceWorker.register(swUrl, { scope, updateViaCache: 'none' })
       .then(registration => {
+        registration.update().catch(() => {});
         registration.addEventListener('updatefound', () => {
           const worker = registration.installing;
           if (!worker) return;
