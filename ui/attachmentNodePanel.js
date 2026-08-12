@@ -1,4 +1,6 @@
 import { PART_CATEGORIES, NODE_TYPES } from "../rocket/categories.js";
+import { scene } from "../core/scene.js";
+import { suggestAutoNode, nodePresetKinds } from "../rocket/autoNodePlacement.js";
 import {
     getAttachmentNodes,
     getActiveAttachmentNodeId,
@@ -39,6 +41,7 @@ function render() {
             <div><span class="eyebrow">Connectivity</span><strong>Attachment Nodes</strong></div>
             <button type="button" data-node-add>+ Add Node</button>
         </div>
+        <div class="rocket-node-presets" data-node-presets></div>
         <div class="rocket-node-list" data-node-list></div>
         <div class="rocket-node-editor" data-node-editor></div>
     `;
@@ -47,8 +50,19 @@ function render() {
 
     const list = host.querySelector("[data-node-list]");
     const editor = host.querySelector("[data-node-editor]");
+    const presets = host.querySelector("[data-node-presets]");
     const nodes = getAttachmentNodes();
     const activeId = getActiveAttachmentNodeId();
+
+    nodePresetKinds().forEach(preset => {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "rocket-node-preset";
+        button.textContent = `Auto ${preset.label}`;
+        button.title = "Place from current model bounds";
+        button.addEventListener("click", () => addAutoNode(preset.id));
+        presets.appendChild(button);
+    });
 
     nodes.forEach(node => {
         const item = document.createElement("button");
@@ -60,8 +74,8 @@ function render() {
     });
 
     if (!nodes.length) {
-        list.innerHTML = `<div class="rocket-node-empty">No nodes. Add Top, Bottom, Engine, Docking or custom attachment points.</div>`;
-        editor.innerHTML = `<div class="rocket-node-hint">Nodes are editor-only helpers and will be excluded from the final visual model.</div>`;
+        list.innerHTML = `<div class="rocket-node-empty">No nodes yet. Use an Auto preset or add a custom node.</div>`;
+        editor.innerHTML = `<div class="rocket-node-hint">Auto presets use the current model bounds and remain fully editable after placement.</div>`;
     } else if (activeId) {
         const node = nodes.find(item => item.id === activeId);
         if (node) buildEditor(editor, node);
@@ -78,6 +92,19 @@ function render() {
         });
         if (next) setTimeout(() => selectAttachmentNode(next.id), 0);
     });
+}
+
+function addAutoNode(kind) {
+    const source = suggestAutoNode(scene, kind);
+    if (!source) {
+        window.dispatchEvent(new CustomEvent("editor:status", { detail: "No model geometry available for auto placement" }));
+        return;
+    }
+    const node = addAttachmentNode(source);
+    if (node) {
+        selectAttachmentNode(node.id);
+        window.dispatchEvent(new CustomEvent("editor:status", { detail: `${source.name} auto-placed from model bounds` }));
+    }
 }
 
 function buildEditor(editor, node) {
@@ -156,7 +183,7 @@ function normalize(vector) {
     return length > 1e-8 ? [x / length, y / length, z / length] : [0, 1, 0];
 }
 
-function escapeHtml(value) { return String(value).replace(/[&<>"']/g, char => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;" }[char])); }
+function escapeHtml(value) { return String(value).replace(/[&<>\"']/g, char => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '\"': "&quot;", "'": "&#039;" }[char])); }
 function escapeAttr(value) { return escapeHtml(value); }
 
 function installStyles() {
@@ -165,8 +192,8 @@ function installStyles() {
     style.id = "rocketNodeEditorStyles";
     style.textContent = `
         .rocket-node-editor-section{margin:10px;border:1px solid #30333a;border-radius:6px;background:#15171b;overflow:hidden}
-        .rocket-node-editor-head{display:flex;align-items:center;justify-content:space-between;padding:9px;border-bottom:1px solid #282b31}.rocket-node-editor-head strong{display:block;margin-top:2px;color:#e7e9ed;font-size:12px}.rocket-node-editor-head button,.rocket-node-editor-title button{border:1px solid #343842;border-radius:4px;background:#202329;color:#bfc4cd;padding:6px 8px;font:600 9px system-ui;cursor:pointer}.rocket-node-editor-head button:hover,.rocket-node-editor-title button:hover{background:#2a2d34;color:#fff}
-        .rocket-node-list{display:grid;gap:4px;padding:7px}.rocket-node-item{display:grid;grid-template-columns:12px 1fr auto;align-items:center;gap:7px;width:100%;padding:7px;border:1px solid #292c32;border-radius:4px;background:#17191e;color:#c9cdd5;text-align:left;cursor:pointer}.rocket-node-item:hover{background:#20232a}.rocket-node-item.active{border-color:#5a6270;background:#20242b}.node-dot,.node-editor-dot{width:8px;height:8px;border-radius:50%;background:#c4cad4}.node-dot[data-type="structural"],.node-editor-dot[data-type="structural"]{background:#67d4ff}.node-dot[data-type="fuel"],.node-editor-dot[data-type="fuel"]{background:#6ee7a8}.node-dot[data-type="engine"],.node-editor-dot[data-type="engine"]{background:#ff8a65}.node-dot[data-type="dock"],.node-editor-dot[data-type="dock"]{background:#c9a7ff}.node-dot[data-type="utility"],.node-editor-dot[data-type="utility"]{background:#f5d06f}.node-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:10px}.rocket-node-item small{color:#727782;font-size:8px}.rocket-node-empty,.rocket-node-hint{margin:0 7px 7px;padding:8px;border:1px dashed #343842;border-radius:4px;color:#757b86;font:9px/1.45 system-ui}.rocket-node-editor{padding:8px;border-top:1px solid #292c31}.rocket-node-editor-title{display:flex;align-items:center;gap:6px;margin-bottom:8px}.rocket-node-editor-title strong{flex:1;color:#e7e9ed;font-size:10px}.node-field{display:grid;grid-template-columns:70px 1fr;align-items:center;gap:6px;margin-bottom:6px;color:#7f8590;font-size:9px}.node-field input,.node-field select,.node-vector input{width:100%;box-sizing:border-box;border:1px solid #343741;border-radius:4px;background:#101216;color:#d7dae0;padding:6px;font:10px system-ui;outline:none}.node-field input:focus,.node-field select:focus,.node-vector input:focus{border-color:#596273}.node-field-label{margin:8px 0 4px;color:#777d87;font-size:8px;font-weight:700;letter-spacing:.08em;text-transform:uppercase}.node-vector{display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px}.node-categories{display:grid;grid-template-columns:1fr 1fr;gap:4px}.node-check{display:flex;align-items:center;gap:5px;padding:4px;border:1px solid #2d3037;border-radius:4px;background:#17191e;color:#9ea4ad;font-size:8px}.node-check input{accent-color:#8995aa}.node-apply{width:100%;margin-top:8px;border:1px solid #3a3e48;border-radius:4px;background:#262a31;color:#d2d6de;padding:7px;font:600 10px system-ui;cursor:pointer}.node-apply:hover{background:#31353e;color:#fff}
+        .rocket-node-editor-head{display:flex;align-items:center;justify-content:space-between;padding:9px;border-bottom:1px solid #282b31}.rocket-node-editor-head strong{display:block;margin-top:2px;color:#e7e9ed;font-size:12px}.rocket-node-editor-head button,.rocket-node-editor-title button,.rocket-node-preset{border:1px solid #343842;border-radius:4px;background:#202329;color:#bfc4cd;padding:6px 8px;font:600 9px system-ui;cursor:pointer}.rocket-node-editor-head button:hover,.rocket-node-editor-title button:hover,.rocket-node-preset:hover{background:#2a2d34;color:#fff}
+        .rocket-node-presets{display:grid;grid-template-columns:1fr 1fr;gap:5px;padding:7px;border-bottom:1px solid #292c31}.rocket-node-preset{padding:7px 6px;text-align:left;background:#1b1e23}.rocket-node-list{display:grid;gap:4px;padding:7px}.rocket-node-item{display:grid;grid-template-columns:12px 1fr auto;align-items:center;gap:7px;width:100%;padding:7px;border:1px solid #292c32;border-radius:4px;background:#17191e;color:#c9cdd5;text-align:left;cursor:pointer}.rocket-node-item:hover{background:#20232a}.rocket-node-item.active{border-color:#5a6270;background:#20242b}.node-dot,.node-editor-dot{width:8px;height:8px;border-radius:50%;background:#c4cad4}.node-dot[data-type="structural"],.node-editor-dot[data-type="structural"]{background:#67d4ff}.node-dot[data-type="fuel"],.node-editor-dot[data-type="fuel"]{background:#6ee7a8}.node-dot[data-type="engine"],.node-editor-dot[data-type="engine"]{background:#ff8a65}.node-dot[data-type="dock"],.node-editor-dot[data-type="dock"]{background:#c9a7ff}.node-dot[data-type="utility"],.node-editor-dot[data-type="utility"]{background:#f5d06f}.node-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:10px}.rocket-node-item small{color:#727782;font-size:8px}.rocket-node-empty,.rocket-node-hint{margin:0 7px 7px;padding:8px;border:1px dashed #343842;border-radius:4px;color:#757b86;font:9px/1.45 system-ui}.rocket-node-editor{padding:8px;border-top:1px solid #292c31}.rocket-node-editor-title{display:flex;align-items:center;gap:6px;margin-bottom:8px}.rocket-node-editor-title strong{flex:1;color:#e7e9ed;font-size:10px}.node-field{display:grid;grid-template-columns:70px 1fr;align-items:center;gap:6px;margin-bottom:6px;color:#7f8590;font-size:9px}.node-field input,.node-field select,.node-vector input{width:100%;box-sizing:border-box;border:1px solid #343741;border-radius:4px;background:#101216;color:#d7dae0;padding:6px;font:10px system-ui;outline:none}.node-field input:focus,.node-field select:focus,.node-vector input:focus{border-color:#596273}.node-field-label{margin:8px 0 4px;color:#777d87;font-size:8px;font-weight:700;letter-spacing:.08em;text-transform:uppercase}.node-vector{display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px}.node-categories{display:grid;grid-template-columns:1fr 1fr;gap:4px}.node-check{display:flex;align-items:center;gap:5px;padding:4px;border:1px solid #2d3037;border-radius:4px;background:#17191e;color:#9ea4ad;font-size:8px}.node-check input{accent-color:#8995aa}.node-apply{width:100%;margin-top:8px;border:1px solid #3a3e48;border-radius:4px;background:#262a31;color:#d2d6de;padding:7px;font:600 10px system-ui;cursor:pointer}.node-apply:hover{background:#31353e;color:#fff}
     `;
     document.head.appendChild(style);
 }
