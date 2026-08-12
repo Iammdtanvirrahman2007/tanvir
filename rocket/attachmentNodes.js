@@ -135,13 +135,14 @@ export function addAttachmentNode(source = {}) {
     if (!sceneRef) return null;
     ensureModelRootMetadata();
     const current = getAttachmentNodes();
+    const direction = normalizeDirection(source.direction || [0, 1, 0]);
     const node = createAttachmentNode({
         name: source.name || `Node ${current.length + 1}`,
         id: source.id,
         type: source.type || "structural",
         position: source.position || [0, 0, 0],
-        rotation: source.rotation || [0, 0, 0],
-        direction: source.direction || [0, 1, 0],
+        rotation: source.rotation || rotationFromDirection(direction),
+        direction,
         compatibleCategories: source.compatibleCategories || ["custom"]
     });
     updateRocketPart(sceneRef, { attachmentNodes: [...current, node] });
@@ -207,7 +208,7 @@ export function autoPlaceNode(preset) {
         type,
         position: position.toArray(),
         direction: direction.toArray(),
-        rotation: [0, 0, 0],
+        rotation: rotationFromDirection(direction),
         compatibleCategories
     });
 }
