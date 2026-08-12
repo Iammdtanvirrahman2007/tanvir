@@ -21,6 +21,17 @@ export function setupTransform(camera, renderer, scene, orbitControls) {
     transform.addEventListener("dragging-changed", event => {
         if (orbitControls) orbitControls.enabled = !event.value;
         const object = pivotState?.object || transform.object;
+
+        window.dispatchEvent(new CustomEvent("editor:gizmo-drag", {
+            detail: {
+                active: !!event.value,
+                object: object || null,
+                mode: transform.mode,
+                axis: transform.axis || null,
+                space: spaceMode
+            }
+        }));
+
         if (!object) return;
 
         if (event.value) {
@@ -47,7 +58,20 @@ export function setupTransform(camera, renderer, scene, orbitControls) {
         dispatchModeChange();
     });
 
-    transform.addEventListener("objectChange", () => refreshInspector());
+    transform.addEventListener("objectChange", () => {
+        refreshInspector();
+        const object = pivotState?.object || transform.object;
+        if (object) {
+            window.dispatchEvent(new CustomEvent("editor:gizmo-change", {
+                detail: {
+                    object,
+                    mode: transform.mode,
+                    axis: transform.axis || null,
+                    space: spaceMode
+                }
+            }));
+        }
+    });
     return transform;
 }
 
