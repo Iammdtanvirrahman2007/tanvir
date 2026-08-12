@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { getTransform, setTransformMode, setAxis, getAxis } from "./transform.js";
+import { getTransform, setTransformMode, setAxis } from "./transform.js";
 import { getSelected } from "./selection.js";
 import { pushHistory } from "./history.js";
 
@@ -8,27 +8,63 @@ let axis = null;
 let buffer = "";
 let active = false;
 let startState = null;
-let preview = null;
-let syncingFromGizmo = false;
+let fromGizmo = false;
 
 export function initNumericTransform() {
     if (window.__modelForgeNumericTransform) return;
     window.__modelForgeNumericTransform = true;
+
     window.addEventListener("keydown", onKeyDown);
-    window.addEventListener("pointerdown", () => { if (!active) return; cancel(); });
+    window.addEventListener("pointerdown", event => {
+        if (!active || fromGizmo) return;
+        if (event.target?.closest?.("canvas")) return;
+        cancel();
+    }, { passive: true });
+
+    window.addEventListener("editor:gizmo-drag", event => {
+        const detail = event.detail || {};
+        const object = detail.object || getSelected();
+        if (!object) return;
+
+        if (detail.active) {
+            fromGizmo = true;
+            mode = detail.mode || mode || "translate";
+            axis = detail.axis ? String(detail.axis).toLowerCase() : axis;
+            active = true;
+            startState = startState || capture(object);
+            showHUD();
+            syncHUDFromObject(object);
+            return;
+        }
+
+        fromGizmo = false;
+        if (active) {
+            syncHUDFromObject(object);
+            hideHUDSoon();
+        }
+    });
+
+    window.addEventListener("editor:gizmo-change", event => {
+        if (!fromGizmo) return;
+        const detail = event.detail || {};
+        const object = detail.object || getSelected();
+        if (!object) return;
+        mode = detail.mode || mode;
+        axis = detail.axis ? String(detail.axis).toLowerCase() : axis;
+        showHUD();
+        syncHUDFromObject(object);
+    });
+
     window.addEventListener("editor:transform-mode", event => {
         if (!active) return;
         mode = event.detail || mode;
-        updateFromSelection();
+        updateHUD();
     });
+
     window.addEventListener("editor:transform-axis", event => {
         if (!active) return;
         axis = event.detail ? String(event.detail).toLowerCase() : null;
-        updateFromSelection();
-    });
-    window.addEventListener("editor:selection-change", event => {
-        if (!active || (event.detail || []).length !== 1) return;
-        updateFromSelection();
+        syncHUDFromObject(getSelected());
     });
 }
 
@@ -41,19 +77,20 @@ function onKeyDown(event) {
 
     if (key === "g" || key === "r" || key === "s") {
         if (!selected) return;
+        fromGizmo = false;
         mode = key === "g" ? "translate" : key === "r" ? "rotate" : "scale";
         setTransformMode(mode);
-        setAxis(null);
         axis = null;
+        setAxis(null);
         buffer = "";
         active = true;
         startState = capture(selected);
         showHUD();
-        syncHUDFromObject(selected);
+        updateHUD();
         return;
     }
 
-    if (!active) return;
+    if (!active || fromGizmo) return;
 
     if (key === "escape") {
         restore(selected, startState);
@@ -103,7 +140,6 @@ function applyPreview(object) {
     }
     object.updateMatrixWorld(true);
     window.dispatchEvent(new CustomEvent("editor:numeric-transform", { detail: { mode, axis, value } }));
-    syncHUDFromObject(object);
 }
 
 function commit(object) {
@@ -158,9 +194,7 @@ function syncHUDFromObject(object) {
     const value = getAxisValue(object);
     if (value === null) return;
     buffer = formatValue(value);
-    syncingFromGizmo = true;
     updateHUD();
-    queueMicrotask(() => { syncingFromGizmo = false; });
 }
 
 function getAxisValue(object) {
@@ -176,13 +210,6 @@ function formatValue(value) {
     return String(Number(value.toFixed(4)));
 }
 
-function updateFromSelection() {
-    const selected = getSelected();
-    if (!selected) return;
-    showHUD();
-    syncHUDFromObject(selected);
-}
-
 function updateHUD() {
     const hud = document.getElementById("numericTransformHUD");
     if (!hud) return;
@@ -192,9 +219,15 @@ function updateHUD() {
     hud.querySelector("#numericValue").textContent = buffer || "0";
 }
 
+function hideHUDSoon() {
+    window.setTimeout(() => {
+        if (!fromGizmo && !active) document.getElementById("numericTransformHUD")?.remove();
+    }, 120);
+}
+
 function cancel() {
-    if (syncingFromGizmo) return;
     active = false;
+    fromGizmo = false;
     mode = null;
     axis = null;
     buffer = "";
