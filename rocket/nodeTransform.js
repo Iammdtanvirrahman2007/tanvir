@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import { TransformControls } from "three/addons/controls/TransformControls.js";
 import { getAttachmentNodes, getActiveAttachmentNodeId, updateAttachmentNode } from "./attachmentNodes.js";
+import { controls as defaultOrbitControls } from "../core/scene.js";
 import { setTransformEnabled } from "../core/transform.js";
 
 let controls = null;
@@ -13,7 +14,8 @@ let targetHelper = null;
 export function initNodeTransform(scene, renderer, camera, orbit = null) {
     if (controls || !scene || !renderer || !camera) return;
     sceneRef = scene;
-    orbitControls = orbit;
+    // main.js currently does not pass OrbitControls, so fall back to the shared scene instance.
+    orbitControls = orbit || defaultOrbitControls || null;
     controls = new TransformControls(camera, renderer.domElement);
     controls.setMode(mode);
     controls.setSize(0.72);
@@ -25,6 +27,7 @@ export function initNodeTransform(scene, renderer, camera, orbit = null) {
     scene.add(controls.getHelper());
 
     controls.addEventListener("dragging-changed", event => {
+        // Prevent camera orbit from interpreting the same pointer drag as a scene move.
         if (orbitControls) orbitControls.enabled = !event.value;
         window.dispatchEvent(new CustomEvent("editor:rocket-node-transform", {
             detail: { active: !!event.value, mode, nodeId: getActiveAttachmentNodeId() }
@@ -61,8 +64,7 @@ function attachNode(nodeId) {
     const helper = sceneRef.getObjectByName(`Node_${node.id}`);
     if (!helper) return detachNode();
 
-    // The normal object gizmo and the node gizmo must never be active together.
-    // Otherwise the same pointer drag can transform both the node and its model.
+    // The normal object gizmo and node gizmo must never be active together.
     setTransformEnabled(false);
 
     targetHelper = helper;
@@ -72,6 +74,7 @@ function attachNode(nodeId) {
     controls.attach(helper);
     controls.enabled = true;
     controls.visible = true;
+    if (orbitControls) orbitControls.enabled = true;
     updateTransformLabel();
 }
 
@@ -84,7 +87,6 @@ function detachNode() {
         controls.visible = false;
     }
     if (orbitControls) orbitControls.enabled = true;
-    // Restore the normal ModelForge object transform gizmo after node editing.
     setTransformEnabled(true);
     window.dispatchEvent(new CustomEvent("editor:rocket-node-transform", {
         detail: { active: false, mode, nodeId: null }
