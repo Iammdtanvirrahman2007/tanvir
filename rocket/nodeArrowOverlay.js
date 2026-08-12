@@ -1,51 +1,41 @@
 import * as THREE from "three";
+import { scene } from "../core/scene.js?v=20260811-runtime-fix";
 
-let sceneRef = null;
 let initialized = false;
 
-export function initNodeArrowOverlay(scene) {
-    sceneRef = scene;
+function initNodeArrowOverlay(sceneRef) {
     if (!sceneRef || initialized) return;
     initialized = true;
-
-    rebuildNodeArrows();
-
+    rebuildNodeArrows(sceneRef);
     window.addEventListener("editor:rocket-part-mode", event => {
-        if (event.detail) rebuildNodeArrows();
+        if (event.detail) rebuildNodeArrows(sceneRef);
     });
-
     window.addEventListener("editor:rocket-node-change", () => {
-        requestAnimationFrame(rebuildNodeArrows);
+        requestAnimationFrame(() => rebuildNodeArrows(sceneRef));
     });
-
-    window.addEventListener("editor:selection-change", () => {
-        requestAnimationFrame(refreshArrowAppearance);
+    window.addEventListener("editor:attachment-node-mode", () => {
+        requestAnimationFrame(() => refreshArrowAppearance(sceneRef));
     });
 }
 
-function rebuildNodeArrows() {
-    if (!sceneRef) return;
-
+function rebuildNodeArrows(sceneRef) {
     sceneRef.traverse(object => {
         if (!object.userData?.attachmentNode) return;
-
-        const existing = object.children.filter(child => child.userData?.attachmentNodeArrowOverlay);
-        for (const child of existing) {
+        object.children.filter(child => child.userData?.attachmentNodeArrowOverlay).forEach(child => {
             object.remove(child);
             child.traverse(node => {
                 node.geometry?.dispose?.();
                 if (Array.isArray(node.material)) node.material.forEach(material => material?.dispose?.());
                 else node.material?.dispose?.();
             });
-        }
-
+        });
         const arrow = new THREE.ArrowHelper(
             new THREE.Vector3(0, 1, 0),
             new THREE.Vector3(0, 0, 0),
             0.7,
             0x67d4ff,
             0.18,
-            0.10
+            0.1
         );
         arrow.name = `${object.name || "Node"} Vector`;
         arrow.userData = {
@@ -56,36 +46,27 @@ function rebuildNodeArrows() {
             selectable: false
         };
         arrow.renderOrder = 1400;
-        arrow.line?.material && (arrow.line.material.depthTest = false, arrow.line.material.depthWrite = false);
-        arrow.cone?.material && (arrow.cone.material.depthTest = false, arrow.cone.material.depthWrite = false);
+        if (arrow.line?.material) {
+            arrow.line.material.depthTest = false;
+            arrow.line.material.depthWrite = false;
+        }
+        if (arrow.cone?.material) {
+            arrow.cone.material.depthTest = false;
+            arrow.cone.material.depthWrite = false;
+        }
         object.add(arrow);
     });
-
-    refreshArrowAppearance();
+    refreshArrowAppearance(sceneRef);
 }
 
-function refreshArrowAppearance() {
-    if (!sceneRef) return;
-    const nodeMode = window.__modelForgeNodeEditMode === true;
-    const activeId = findActiveNodeId();
-
+function refreshArrowAppearance(sceneRef) {
+    const visible = window.__modelForgeNodeEditMode === true;
     sceneRef.traverse(object => {
         if (!object.userData?.attachmentNodeArrowOverlay) return;
-        const parent = object.parent;
-        const active = nodeMode && parent?.userData?.attachmentNodeId === activeId;
-        const color = active ? 0xffc857 : 0x67d4ff;
-        object.line?.material?.color?.setHex(color);
-        object.cone?.material?.color?.setHex(color);
-        object.visible = nodeMode;
+        object.visible = visible;
+        object.line?.material?.color?.setHex(0x67d4ff);
+        object.cone?.material?.color?.setHex(0x67d4ff);
     });
 }
 
-function findActiveNodeId() {
-    let active = null;
-    sceneRef?.traverse(object => {
-        if (object.userData?.attachmentNode && object.userData?.selected) {
-            active = object.userData.attachmentNodeId;
-        }
-    });
-    return active;
-}
+initNodeArrowOverlay(scene);
