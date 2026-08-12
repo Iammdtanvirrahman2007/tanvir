@@ -48,7 +48,7 @@ function render() {
             <div><span class="eyebrow">Connectivity</span><strong>Attachment Nodes</strong><small>${edit ? "Node Edit Mode · click node spheres" : "Normal Mode · node points are inactive"}</small></div>
             <div class="rocket-node-actions"><button type="button" data-mode class="node-mode-btn${edit ? " active" : ""}">${edit ? "Exit Node Mode" : "Node Mode"}</button><button type="button" data-add>+ Add Node</button></div>
         </div>
-        <div class="rocket-node-origin">Reference: Rocket Part local origin <strong>(0, 0, 0)</strong></div>
+        <div class="rocket-node-origin">Reference: Main Graph origin <strong>(0, 0, 0)</strong></div>
         <div class="rocket-node-foundation-list" data-list></div>
         <div class="rocket-node-foundation-empty" data-empty></div>
     `;
@@ -109,7 +109,7 @@ function openContextEditor(event, nodeId) {
     editor.className = "rocket-node-context-editor";
     editor.innerHTML = `
         <div class="rocket-node-context-head">
-            <div><strong>${escapeHtml(node.name || "Node")}</strong><span>Local Transform</span></div>
+            <div><strong>${escapeHtml(node.name || "Node")}</strong><span>Global Transform · Main Graph Origin</span></div>
             <button type="button" data-close aria-label="Close">×</button>
         </div>
         <div class="rocket-node-context-section">
