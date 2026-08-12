@@ -12,11 +12,7 @@ export function createDefaultRocketPart(source = {}) {
         version: source.version || "1.0.0",
         category: isPartCategory(source.category) ? source.category : "custom",
         description: source.description || "",
-        model: {
-            format: "glb",
-            modelUrl: "",
-            thumbnailUrl: ""
-        },
+        model: { format: "glb", modelUrl: "", thumbnailUrl: "" },
         physical: {
             mass: numberOr(source.physical?.mass, 1),
             height: numberOr(source.physical?.height, 1),
@@ -35,9 +31,7 @@ export function createDefaultRocketPart(source = {}) {
         attachmentNodes: normalizeNodes(source.attachmentNodes),
         createdAt: source.createdAt || now,
         updatedAt: now,
-        creator: {
-            source: "ModelForge"
-        },
+        creator: { source: "ModelForge" },
         publishStatus: source.publishStatus || "draft"
     };
 }
@@ -45,9 +39,7 @@ export function createDefaultRocketPart(source = {}) {
 export function attachRocketPartMetadata(scene, source = {}) {
     if (!scene) return createDefaultRocketPart(source);
     const current = readRocketPart(scene);
-    const metadata = current
-        ? mergeRocketPart(current, source)
-        : createDefaultRocketPart(source);
+    const metadata = current ? mergeRocketPart(current, source) : createDefaultRocketPart(source);
     scene.userData = scene.userData || {};
     scene.userData[ROOT_KEY] = metadata;
     return metadata;
@@ -72,9 +64,7 @@ export function updateRocketPart(scene, patch = {}) {
 export function createAttachmentNode(source = {}) {
     const rotation = vector3(source.rotation);
     const hasExplicitRotation = Array.isArray(source.rotation);
-    const direction = hasExplicitRotation
-        ? directionFromRotation(rotation)
-        : normalizeDirection(source.direction);
+    const direction = hasExplicitRotation ? directionFromRotation(rotation) : normalizeDirection(source.direction);
 
     return {
         id: String(source.id || `node-${Math.random().toString(36).slice(2, 8)}`),
@@ -139,30 +129,25 @@ function normalizeDirection(value) {
 }
 
 function directionFromRotation(rotation) {
-    const euler = new THREE.Euler(
-        MathUtils.degToRad(rotation[0]),
-        MathUtils.degToRad(rotation[1]),
-        MathUtils.degToRad(rotation[2]),
-        "XYZ"
-    );
-    const x = -Math.sin(euler.z);
-    const y = Math.cos(euler.x) * Math.cos(euler.z);
-    const z = Math.sin(euler.x);
-    const length = Math.hypot(x, y, z);
-    return length > 1e-8 ? [x / length, y / length, z / length] : [0, 1, 0];
+    const rx = rotation[0] * Math.PI / 180;
+    const ry = rotation[1] * Math.PI / 180;
+    const rz = rotation[2] * Math.PI / 180;
+    const sx = Math.sin(rx), cx = Math.cos(rx);
+    const sy = Math.sin(ry), cy = Math.cos(ry);
+    const sz = Math.sin(rz), cz = Math.cos(rz);
+
+    const x = sx * sy * cz - cy * sz;
+    const y = sx * sy * sz + cy * cz;
+    const z = sx * cy;
+    return normalizeDirection([x, y, z]);
 }
 
 function rotationFromDirection(direction) {
     const [x, y, z] = normalizeDirection(direction);
-    const pitch = Math.atan2(-z, Math.sqrt(x * x + y * y));
+    const pitch = Math.atan2(z, Math.sqrt(x * x + y * y));
     const yaw = Math.atan2(x, y);
-    return [MathUtils.radToDeg(pitch), MathUtils.radToDeg(yaw), 0];
+    return [pitch * 180 / Math.PI, yaw * 180 / Math.PI, 0];
 }
-
-const MathUtils = {
-    degToRad: value => value * Math.PI / 180,
-    radToDeg: value => value * 180 / Math.PI
-};
 
 function numberOr(value, fallback) {
     const n = Number(value);
