@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { getTransform, setTransformMode, setAxis } from "./transform.js";
+import { getTransform, setTransformMode, setAxis, getTransformSpace } from "./transform.js";
 import { getSelected } from "./selection.js";
 import { pushHistory } from "./history.js";
 
@@ -25,7 +25,6 @@ export function initNumericTransform() {
         const detail = event.detail || {};
         const object = detail.object || getSelected();
         if (!object) return;
-
         if (detail.active) {
             fromGizmo = true;
             mode = detail.mode || mode || "translate";
@@ -36,7 +35,6 @@ export function initNumericTransform() {
             syncHUDFromObject(object);
             return;
         }
-
         fromGizmo = false;
         if (active) {
             syncHUDFromObject(object);
@@ -66,6 +64,8 @@ export function initNumericTransform() {
         axis = event.detail ? String(event.detail).toLowerCase() : null;
         syncHUDFromObject(getSelected());
     });
+
+    window.addEventListener("editor:transform-space", updateHUD);
 }
 
 function onKeyDown(event) {
@@ -130,14 +130,9 @@ function applyPreview(object) {
     if (!Number.isFinite(value)) return;
 
     restore(object, startState, { emit: false });
-
-    if (mode === "translate") {
-        object.position[axis] = startState.position[axis] + value;
-    } else if (mode === "rotate") {
-        object.rotation[axis] = startState.rotation[axis] + THREE.MathUtils.degToRad(value);
-    } else if (mode === "scale") {
-        object.scale[axis] = startState.scale[axis] * value;
-    }
+    if (mode === "translate") object.position[axis] = startState.position[axis] + value;
+    else if (mode === "rotate") object.rotation[axis] = startState.rotation[axis] + THREE.MathUtils.degToRad(value);
+    else if (mode === "scale") object.scale[axis] = startState.scale[axis] * value;
     object.updateMatrixWorld(true);
     window.dispatchEvent(new CustomEvent("editor:numeric-transform", { detail: { mode, axis, value } }));
 }
@@ -184,8 +179,39 @@ function showHUD() {
     if (hud) return;
     hud = document.createElement("div");
     hud.id = "numericTransformHUD";
-    hud.innerHTML = `<strong id="numericMode">Move</strong><span id="numericAxis">Free</span><code id="numericValue">0</code><small>Enter Apply · Esc Cancel</small>`;
-    hud.style.cssText = "position:fixed;left:50%;top:72px;transform:translateX(-50%);z-index:90;display:flex;align-items:center;gap:10px;padding:8px 12px;border:1px solid #3a3d45;border-radius:7px;background:#15161df2;color:#cfd2da;font:12px system-ui,sans-serif;box-shadow:0 12px 30px #0008;pointer-events:none";
+    hud.innerHTML = `
+        <div class="numeric-hud-main">
+            <strong id="numericMode">Move</strong>
+            <span class="numeric-hud-sep">•</span>
+            <span id="numericAxis">Free</span>
+            <code id="numericValue">0</code>
+        </div>
+        <div class="numeric-hud-meta">
+            <span id="numericSpace">WORLD</span>
+            <span>Enter Apply</span>
+            <span>Esc Cancel</span>
+        </div>
+    `;
+    hud.style.cssText = `
+        position:fixed;
+        right:14px;
+        bottom:31px;
+        z-index:45;
+        min-width:158px;
+        padding:7px 9px;
+        border:1px solid #30333b;
+        border-radius:6px;
+        background:rgba(23,24,29,.94);
+        color:#cfd2da;
+        font:11px system-ui,sans-serif;
+        box-shadow:0 8px 24px rgba(0,0,0,.28);
+        backdrop-filter:blur(8px);
+        pointer-events:none;
+        user-select:none;
+    `;
+    const style = document.createElement("style");
+    style.textContent = `#numericTransformHUD .numeric-hud-main{display:flex;align-items:center;gap:7px;line-height:1.2}#numericTransformHUD .numeric-hud-main strong{font-weight:650;color:#f0f1f3}#numericTransformHUD .numeric-hud-sep{color:#626671}#numericTransformHUD #numericAxis{color:#b5b8c0}#numericTransformHUD code{margin-left:auto;color:#fff;font:600 11px ui-monospace,SFMono-Regular,Consolas,monospace}#numericTransformHUD .numeric-hud-meta{display:flex;justify-content:space-between;gap:8px;margin-top:5px;padding-top:5px;border-top:1px solid #2a2c33;color:#6f737d;font-size:8px;text-transform:uppercase;letter-spacing:.35px}#numericTransformHUD #numericSpace{color:#aeb2bd;font-weight:700}@media(max-width:760px){#numericTransformHUD{right:10px!important;bottom:32px!important;min-width:146px!important;padding:6px 8px!important}}`;
+    document.head.appendChild(style);
     document.body.appendChild(hud);
 }
 
@@ -217,6 +243,8 @@ function updateHUD() {
     hud.querySelector("#numericMode").textContent = names[mode] || "Transform";
     hud.querySelector("#numericAxis").textContent = axis ? axis.toUpperCase() : "Free";
     hud.querySelector("#numericValue").textContent = buffer || "0";
+    const space = getTransformSpace?.() || "world";
+    hud.querySelector("#numericSpace").textContent = space.toUpperCase();
 }
 
 function hideHUDSoon() {
