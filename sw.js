@@ -1,4 +1,4 @@
-const CACHE_NAME = "modelforge-shell-v1";
+const CACHE_NAME = "modelforge-shell-v2";
 const APP_SHELL = [
   "./",
   "./index.html",
@@ -6,6 +6,8 @@ const APP_SHELL = [
   "./device.css",
   "./favicon.svg",
   "./manifest.webmanifest",
+  "./icons/model-forge-192.png",
+  "./icons/model-forge-512.png",
   "./icons/model-forge-192.svg",
   "./icons/model-forge-512.svg"
 ];
@@ -43,7 +45,7 @@ self.addEventListener("fetch", event => {
       if (cached) return cached;
 
       return fetch(request).then(response => {
-        if (!response || response.status !== 200 && response.type !== "opaque") {
+        if (!response || (response.status !== 200 && response.type !== "opaque")) {
           return response;
         }
 
