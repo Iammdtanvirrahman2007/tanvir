@@ -23,9 +23,10 @@ function sync(scene) {
     const wanted = new Set();
 
     scene.traverse(node => {
-        if (!node.userData?.attachmentNode) return;
-        const id = node.userData.attachmentNodeId;
-        if (!id) return;
+        // নিশ্চিত করুন আপনার নোডে এই userData গুলোর যেকোনো একটি সঠিকভাবে সেট করা আছে
+        if (!node.userData?.attachmentNode && !node.userData?.attachmentNodeId) return;
+        
+        const id = node.userData.attachmentNodeId || node.uuid;
         wanted.add(id);
 
         let arrow = arrows.get(id);
@@ -48,14 +49,10 @@ function sync(scene) {
 
         arrow.traverse(part => {
             part.visible = visible;
-            part.renderOrder = 5000;
+            part.renderOrder = 9999; // রেন্ডার অর্ডার বাড়িয়ে দেওয়া হয়েছে যাতে সবার উপরে থাকে
             part.frustumCulled = false;
-            if (part.material) {
-                part.material.depthTest = false;
-                part.material.depthWrite = false;
-                part.material.color?.setHex(0x67d4ff);
-            }
         });
+
         arrow.updateMatrixWorld(true);
     });
 
@@ -71,20 +68,30 @@ function createArrow(name) {
     const group = new THREE.Group();
     group.name = `${name} Vector Arrow`;
     group.userData = { editorOnly: true, attachmentNodeVectorArrow: true };
-    group.renderOrder = 5000;
+    group.renderOrder = 9999;
     group.frustumCulled = false;
+
+    // কমন ম্যাটেরিয়াল যা ডেপথ টেস্ট বাইপাস করবে
+    const material = new THREE.MeshBasicMaterial({
+        color: 0x67d4ff,
+        depthTest: false,
+        depthWrite: false,
+        toneMapped: false
+    });
 
     const shaft = new THREE.Mesh(
         new THREE.CylinderGeometry(0.035, 0.035, 0.62, 12),
-        new THREE.MeshBasicMaterial({ color: 0x67d4ff, depthTest: false, depthWrite: false, toneMapped: false })
+        material
     );
     shaft.position.y = 0.31;
+    shaft.renderOrder = 9999;
 
     const head = new THREE.Mesh(
         new THREE.ConeGeometry(0.095, 0.24, 12),
-        new THREE.MeshBasicMaterial({ color: 0x67d4ff, depthTest: false, depthWrite: false, toneMapped: false })
+        material
     );
     head.position.y = 0.74;
+    head.renderOrder = 9999;
 
     group.add(shaft, head);
     return group;
@@ -93,7 +100,10 @@ function createArrow(name) {
 function dispose(object) {
     object.traverse(part => {
         part.geometry?.dispose?.();
-        if (Array.isArray(part.material)) part.material.forEach(material => material?.dispose?.());
-        else part.material?.dispose?.();
+        if (Array.isArray(part.material)) {
+            part.material.forEach(material => material?.dispose?.());
+        } else {
+            part.material?.dispose?.();
+        }
     });
 }
