@@ -2,7 +2,6 @@ import * as THREE from "three";
 import { PART_CATEGORIES } from "../rocket/categories.js";
 import { attachRocketPartMetadata, createDefaultRocketPart, updateRocketPart, readRocketPart } from "../rocket/rocketPart.js";
 import { validateRocketPart } from "../rocket/validation.js";
-import { initReferenceFrames, setCoordinateSystemPatch, setOriginToModelCenter, setBottomPlaneFromModel, setTopPlaneFromModel, setReferenceGuidesVisible, areReferenceGuidesVisible } from "../rocket/referenceFrames.js";
 
 let sceneRef = null;
 let active = false;
@@ -12,7 +11,6 @@ export function initRocketPartPanel(scene) {
     sceneRef = scene;
     ensurePanel();
     attachRocketPartMetadata(sceneRef);
-    initReferenceFrames(sceneRef);
 }
 
 export function toggleRocketPartMode() {
@@ -69,8 +67,6 @@ function renderPanel() {
     if (!body) return;
     const part = readRocketPart(sceneRef) || createDefaultRocketPart();
     body.replaceChildren();
-    const cs = part.coordinateSystem || {};
-    const origin = Array.isArray(cs.origin) ? cs.origin : [0, 0, 0];
 
     body.append(
         section("Part Identity", [
@@ -88,32 +84,6 @@ function renderPanel() {
             numberInput("Depth", part.physical.depth, value => updatePhysical("depth", value)),
             action("Calculate From Model", calculateDimensions)
         ]),
-        section("Coordinate System", [
-            selectInput("Up Axis", ["X", "Y", "Z"], cs.upAxis || "Y", value => setCoordinate("upAxis", value)),
-            selectInput("Forward Axis", ["X", "Y", "Z"], cs.forwardAxis || "Z", value => setCoordinate("forwardAxis", value)),
-            vectorInput("Origin", origin, value => setCoordinate("origin", value)),
-            numberInput("Bottom Plane", Number.isFinite(Number(cs.bottomPlaneY)) ? Number(cs.bottomPlaneY) : 0, value => setCoordinate("bottomPlaneY", value), true),
-            numberInput("Top Plane", Number.isFinite(Number(cs.topPlaneY)) ? Number(cs.topPlaneY) : 0, value => setCoordinate("topPlaneY", value), true),
-            action("Set Origin To Model Center", () => {
-                const result = setOriginToModelCenter();
-                renderPanel();
-                dispatchChange();
-                setStatus(result ? "Origin and planes recalculated from model" : "No model geometry to define origin");
-            }),
-            action("Set Bottom Plane From Model", () => {
-                const value = setBottomPlaneFromModel();
-                renderPanel();
-                dispatchChange();
-                setStatus(value == null ? "No model geometry to define bottom plane" : `Bottom plane set · ${Number(value).toFixed(2)}`);
-            }),
-            action("Set Top Plane From Model", () => {
-                const value = setTopPlaneFromModel();
-                renderPanel();
-                dispatchChange();
-                setStatus(value == null ? "No model geometry to define top plane" : `Top plane set · ${Number(value).toFixed(2)}`);
-            }),
-            toggle("Show Reference Guides", areReferenceGuidesVisible(), value => { setReferenceGuidesVisible(value); dispatchChange(); })
-        ]),
         section("Attachment Nodes", [
             action("Validate Part", validateCurrent)
         ])
@@ -125,21 +95,6 @@ function renderPanel() {
         updateRocketPart(sceneRef, patch);
         renderPanel();
         dispatchChange();
-    }
-
-    function setCoordinate(key, value) {
-        if (!sceneRef) return;
-        const partNow = readRocketPart(sceneRef) || createDefaultRocketPart();
-        const currentCs = partNow.coordinateSystem || {};
-        if (key === "forwardAxis" && value === currentCs.upAxis) {
-            setStatus("Forward Axis cannot be the same as Up Axis");
-            renderPanel();
-            return;
-        }
-        const patch = { [key]: value };
-        const next = setCoordinateSystemPatch(patch);
-        renderPanel();
-        if (next) dispatchChange();
     }
 
     function updatePhysical(key, value) {
@@ -232,19 +187,6 @@ function numberInput(label, value, onChange, allowNegative = false) {
     input.addEventListener("change", () => onChange(Number(input.value))); row.appendChild(input); return row;
 }
 
-function vectorInput(label, value, onChange) {
-    const row = rowBase(label, true);
-    const group = document.createElement("div"); group.className = "rocket-vector-inputs";
-    const inputs = (Array.isArray(value) ? value : [0, 0, 0]).map((item, index) => {
-        const input = document.createElement("input"); input.type = "number"; input.step = "0.01"; input.value = Number(item || 0).toFixed(2); input.dataset.axis = "XYZ"[index];
-        input.setAttribute("aria-label", `${label} ${input.dataset.axis}`); group.appendChild(input); return input;
-    });
-    inputs.forEach(() => {});
-    const commit = () => onChange(inputs.map(input => Number(input.value)));
-    inputs.forEach(input => input.addEventListener("change", commit));
-    row.appendChild(group); return row;
-}
-
 function selectInput(label, values, current, onChange) {
     const row = rowBase(label); const select = document.createElement("select");
     values.forEach(value => { const option = document.createElement("option"); option.value = value; option.textContent = value; option.selected = value === current; select.appendChild(option); });
@@ -256,14 +198,7 @@ function textArea(label, value, onChange) {
     input.addEventListener("change", () => onChange(input.value.trim())); row.appendChild(input); return row;
 }
 
-function toggle(label, checked, onChange) {
-    const row = document.createElement("label"); row.className = "rocket-part-toggle";
-    const input = document.createElement("input"); input.type = "checkbox"; input.checked = !!checked; input.addEventListener("change", () => onChange(input.checked));
-    const text = document.createElement("span"); text.textContent = label; row.append(input, text); return row;
-}
-
 function action(label, onClick) { const button = document.createElement("button"); button.type = "button"; button.className = "rocket-part-action"; button.textContent = label; button.addEventListener("click", onClick); return button; }
-function readonlyRow(label, value) { return textInput(label, value, null, true); }
 function rowBase(label, stacked = false) { const row = document.createElement("label"); row.className = `rocket-part-field${stacked ? " stacked" : ""}`; const caption = document.createElement("span"); caption.textContent = label; row.appendChild(caption); return row; }
 
 function installStyles() {
@@ -290,10 +225,8 @@ function installStyles() {
         .rocket-part-field input,.rocket-part-field select,.rocket-part-field textarea{width:100%;box-sizing:border-box;border:1px solid #333741;border-radius:4px;background:#111318;color:#d5d8de;padding:6px 7px;font:11px system-ui,sans-serif;outline:none}
         .rocket-part-field input:focus,.rocket-part-field select:focus,.rocket-part-field textarea:focus{border-color:#596273}
         .rocket-part-field input:disabled{opacity:.55}
-        .rocket-vector-inputs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
         .rocket-part-action{border:1px solid #343842;border-radius:4px;background:#202329;color:#bfc4cd;padding:7px 8px;font:600 10px system-ui;cursor:pointer}
         .rocket-part-action:hover{background:#292c33;color:#fff}
-        .rocket-part-toggle{display:flex;align-items:center;gap:7px;color:#9ea4ae;font-size:9px;border:1px solid #2f323a;padding:7px;border-radius:4px;background:#17191e}.rocket-part-toggle input{accent-color:#d89a24}
         @media(max-width:760px){#rocketPartPanel{position:fixed;inset:auto 0 32px 0;width:100%;max-height:calc(82vh - 32px);height:auto;border-left:0;border-top:1px solid #343841;border-radius:12px 12px 0 0;box-shadow:0 -20px 45px #000a}}
     `;
     document.head.appendChild(style);
