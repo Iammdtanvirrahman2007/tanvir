@@ -4,6 +4,7 @@ import { updateInspector } from "../ui/inspector.js";
 import { highlight, highlightMultiple, clearHighlight } from "./highlight.js";
 import { toggleMultiSelect, clearMultiSelection, getMultiSelection, setMultiSelection } from "./grouping.js";
 import { setActiveHierarchy, clearHierarchySelection } from "../ui/hierarchy.js";
+import { consumeFocusTarget } from "./focus.js";
 
 const raycaster = new THREE.Raycaster();
 const mouse = new THREE.Vector2();
@@ -117,12 +118,15 @@ export function setupSelection(renderer, camera, scene) {
         if (event.pointerId === pointerStart?.pointerId) resetPointerState();
     }, { passive: true });
 
-    // Selection is intentionally single-click/tap only. Focus is now an
-    // explicit Inspector "Set Focus" action, avoiding desktop double-click
-    // and mobile double-tap conflicts with camera gestures and zoom.
+    // Selection is intentionally single-click/tap only. When the explicit
+    // group "Pick Focus Object" mode is active, that same single click is
+    // consumed by the focus system instead of changing selection.
     canvas.addEventListener("click", event => {
         if (event.button !== 0 || pointerMoved || boxDragging || isDraggingTransform()) return;
         const target = pick(event, camera, scene);
+        const focusConsumed = target ? consumeFocusTarget(target) : false;
+        if (focusConsumed) return;
+
         const toggle = event.ctrlKey || event.metaKey || event.shiftKey;
         if (target) selectObject(target, { toggle });
         else if (!toggle) clearSelection();
