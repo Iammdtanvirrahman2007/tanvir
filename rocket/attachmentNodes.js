@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import { createAttachmentNode, readRocketPart, updateRocketPart } from "./rocketPart.js";
-import { selectObject, clearSelection } from "../core/selection.js";
+import { selectObject, clearSelection, getSelected } from "../core/selection.js";
 
 let sceneRef = null;
 let modelRoot = null;
@@ -89,20 +89,29 @@ export function toggleNodeEditMode() { return setNodeEditMode(!nodeEditMode); }
 
 export function getModelRoot() {
     if (!sceneRef) return null;
-    const uuid = readRocketPart(sceneRef)?.coordinateSystem?.modelRootUUID;
+    const metadata = readRocketPart(sceneRef);
+    const uuid = metadata?.coordinateSystem?.modelRootUUID;
     if (uuid) {
         const found = sceneRef.getObjectByProperty("uuid", uuid);
         if (found && !found.userData?.editorOnly && !found.userData?.attachmentNode) return found;
     }
-    return sceneRef.children.find(o => o.userData?.editorObject && !o.userData?.editorOnly && !o.userData?.attachmentNode) || null;
+
+    const selected = getSelected?.();
+    if (selected && !selected.userData?.editorOnly && !selected.userData?.attachmentNode) return selected;
+
+    const editorObject = sceneRef.children.find(o => o.userData?.editorObject && !o.userData?.editorOnly && !o.userData?.attachmentNode);
+    if (editorObject) return editorObject;
+
+    return sceneRef.children.find(o => !o.userData?.editorOnly && !o.userData?.attachmentNode) || null;
 }
 
 export function ensureModelRootMetadata() {
     modelRoot = getModelRoot() || modelRoot;
     if (!modelRoot || !sceneRef) return modelRoot;
     const current = readRocketPart(sceneRef) || {};
-    if (current.coordinateSystem?.modelRootUUID !== modelRoot.uuid) {
-        updateRocketPart(sceneRef, { coordinateSystem: { modelRootUUID: modelRoot.uuid } });
+    const coordinateSystem = current.coordinateSystem || {};
+    if (coordinateSystem.modelRootUUID !== modelRoot.uuid) {
+        updateRocketPart(sceneRef, { coordinateSystem: { ...coordinateSystem, modelRootUUID: modelRoot.uuid } });
     }
     return modelRoot;
 }
@@ -131,7 +140,11 @@ export function clearAttachmentNodeSelection() {
 
 export function addAttachmentNode(source = {}) {
     ensureModelRootMetadata();
-    if (!sceneRef || !modelRoot) return null;
+    if (!sceneRef || !modelRoot) {
+        window.dispatchEvent(new CustomEvent("editor:status", { detail: "No model root available for attachment node" }));
+        return null;
+    }
+
     const current = getAttachmentNodes();
     const node = createAttachmentNode({
         name: source.name || `Node ${current.length + 1}`,
@@ -141,7 +154,15 @@ export function addAttachmentNode(source = {}) {
         direction: source.direction || [0, 1, 0],
         compatibleCategories: source.compatibleCategories || []
     });
-    updateRocketPart(sceneRef, { attachmentNodes: [...current, node] });
+
+    updateRocketPart(sceneRef, {
+        attachmentNodes: [...current, node],
+        coordinateSystem: {
+            ...(readRocketPart(sceneRef)?.coordinateSystem || {}),
+            modelRootUUID: modelRoot.uuid
+        }
+    });
+
     createNodeObject(node);
     activeNodeId = node.id;
     if (!nodeEditMode) setNodeEditMode(true);
@@ -160,7 +181,8 @@ export function updateAttachmentNode(nodeId, patch = {}) {
     if (Array.isArray(patch.position)) node.position = normalizeVector(patch.position);
     if (Array.isArray(patch.rotation)) node.rotation = normalizeVector(patch.rotation);
     if (Array.isArray(patch.direction)) node.direction = normalizeDirection(patch.direction);
-    const next = current.slice(); next[index] = node;
+    const next = current.slice();
+    next[index] = node;
     updateRocketPart(sceneRef, { attachmentNodes: next });
     applyMetadataToObject(node);
     dispatchNodeChange(node, false);
@@ -203,7 +225,14 @@ function createNodeObject(node) {
     object.renderOrder = 1200;
     modelRoot.add(object);
 
-    const arrow = new THREE.ArrowHelper(new THREE.Vector3(0, 1, 0), new THREE.Vector3(0, 0, 0), 0.55, 0x67d4ff, 0.14, 0.075);
+    const arrow = new THREE.ArrowHelper(
+        new THREE.Vector3(0, 1, 0),
+        new THREE.Vector3(0, 0, 0),
+        0.55,
+        0x67d4ff,
+        0.14,
+        0.075
+    );
     arrow.name = `${object.name} Direction`;
     arrow.userData = { attachmentNodeArrow: true, attachmentNodeId: node.id, selectable: false, editorOnly: false };
     arrow.renderOrder = 1201;
@@ -221,12 +250,14 @@ function rebuildNodeObjects() {
     if (!modelRoot) return;
     const nodes = getAttachmentNodes();
     const wanted = new Set(nodes.map(n => n.id));
+
     for (const [id, object] of nodeObjects) {
         if (wanted.has(id)) continue;
         object.parent?.remove(object);
         disposeNodeObject(object);
         nodeObjects.delete(id);
     }
+
     for (const node of nodes) {
         if (!nodeObjects.has(node.id)) createNodeObject(node);
         else applyMetadataToObject(node);
@@ -253,7 +284,9 @@ function applyMetadataToObject(node) {
         );
         updateNodeArrowVisual(object, node);
         object.updateMatrixWorld(true);
-    } finally { syncing = false; }
+    } finally {
+        syncing = false;
+    }
 }
 
 function syncNodeFromObject(object) {
@@ -262,6 +295,7 @@ function syncNodeFromObject(object) {
     const current = getAttachmentNodes();
     const index = current.findIndex(n => n.id === nodeId);
     if (index < 0) return;
+
     const origin = getReferenceOrigin();
     const localPosition = [
         object.position.x - origin[0],
@@ -281,9 +315,11 @@ function syncNodeFromObject(object) {
         ],
         direction: directionFromQuaternion(object.quaternion)
     };
+
     syncing = true;
     try { updateRocketPart(sceneRef, { attachmentNodes: next }); }
     finally { syncing = false; }
+
     activeNodeId = nodeId;
     updateNodeArrowVisual(object, next[index]);
     dispatchNodeChange(next[index], true);
@@ -296,13 +332,11 @@ function updateNodeArrowVisual(object, node) {
     const color = active ? 0xffc857 : 0x67d4ff;
     arrow.line?.material?.color?.setHex(color);
     arrow.cone?.material?.color?.setHex(color);
-    const direction = normalizeDirection(node.direction || [0, 1, 0]);
-    arrow.setDirection(direction);
+    arrow.setDirection(normalizeDirection(node.direction || [0, 1, 0]));
 }
 
 function getReferenceOrigin() {
-    const origin = readRocketPart(sceneRef)?.coordinateSystem?.origin;
-    return normalizeVector(origin);
+    return normalizeVector(readRocketPart(sceneRef)?.coordinateSystem?.origin);
 }
 
 function directionFromQuaternion(quaternion) {
@@ -327,7 +361,10 @@ function dispatchNodeChange(node, transforming = false) {
     window.dispatchEvent(new CustomEvent("editor:rocket-node-change", { detail: { node, transforming } }));
 }
 
-function normalizeVector(value) { return [0,1,2].map(i => Number.isFinite(Number(value?.[i])) ? Number(value[i]) : 0); }
+function normalizeVector(value) {
+    return [0, 1, 2].map(i => Number.isFinite(Number(value?.[i])) ? Number(value[i]) : 0);
+}
+
 function disposeNodeObject(object) {
     if (!object) return;
     object.traverse(child => {
