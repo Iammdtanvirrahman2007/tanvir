@@ -27,7 +27,10 @@ export function createDefaultRocketPart(source = {}) {
         coordinateSystem: {
             upAxis: "Y",
             forwardAxis: "Z",
-            origin: [0, 0, 0]
+            origin: [0, 0, 0],
+            bottomPlaneY: 0,
+            topPlaneY: 0,
+            modelRootUUID: ""
         },
         attachmentNodes: normalizeNodes(source.attachmentNodes),
         createdAt: source.createdAt || now,
@@ -67,13 +70,19 @@ export function updateRocketPart(scene, patch = {}) {
 }
 
 export function createAttachmentNode(source = {}) {
+    const rotation = vector3(source.rotation);
+    const hasExplicitRotation = Array.isArray(source.rotation);
+    const direction = hasExplicitRotation
+        ? directionFromRotation(rotation)
+        : normalizeDirection(source.direction);
+
     return {
         id: String(source.id || `node-${Math.random().toString(36).slice(2, 8)}`),
         name: String(source.name || source.id || "Attachment Node"),
         type: isNodeType(source.type) ? source.type : "structural",
         position: vector3(source.position),
-        rotation: vector3(source.rotation),
-        direction: normalizeDirection(source.direction),
+        rotation: hasExplicitRotation ? rotation : rotationFromDirection(direction),
+        direction,
         compatibleCategories: Array.isArray(source.compatibleCategories)
             ? source.compatibleCategories.filter(isPartCategory)
             : ["custom"]
@@ -128,6 +137,32 @@ function normalizeDirection(value) {
     const length = Math.hypot(x, y, z);
     return length > 1e-8 ? [x / length, y / length, z / length] : [0, 1, 0];
 }
+
+function directionFromRotation(rotation) {
+    const euler = new THREE.Euler(
+        MathUtils.degToRad(rotation[0]),
+        MathUtils.degToRad(rotation[1]),
+        MathUtils.degToRad(rotation[2]),
+        "XYZ"
+    );
+    const x = -Math.sin(euler.z);
+    const y = Math.cos(euler.x) * Math.cos(euler.z);
+    const z = Math.sin(euler.x);
+    const length = Math.hypot(x, y, z);
+    return length > 1e-8 ? [x / length, y / length, z / length] : [0, 1, 0];
+}
+
+function rotationFromDirection(direction) {
+    const [x, y, z] = normalizeDirection(direction);
+    const pitch = Math.atan2(-z, Math.sqrt(x * x + y * y));
+    const yaw = Math.atan2(x, y);
+    return [MathUtils.radToDeg(pitch), MathUtils.radToDeg(yaw), 0];
+}
+
+const MathUtils = {
+    degToRad: value => value * Math.PI / 180,
+    radToDeg: value => value * 180 / Math.PI
+};
 
 function numberOr(value, fallback) {
     const n = Number(value);
