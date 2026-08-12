@@ -1,9 +1,8 @@
 import * as THREE from "three";
 import { createAttachmentNode, readRocketPart, updateRocketPart } from "./rocketPart.js";
-import { selectObject, clearSelection, getSelected } from "../core/selection.js";
+import { selectObject, clearSelection } from "../core/selection.js";
 
 let sceneRef = null;
-let modelRoot = null;
 let activeNodeId = null;
 let initialized = false;
 let syncing = false;
@@ -16,16 +15,17 @@ export function initAttachmentNodeEditor(scene) {
     if (!sceneRef || initialized) return;
     initialized = true;
     window.__modelForgeNodeEditMode = false;
-    ensureModelRootMetadata();
     rebuildNodeObjects();
 
     window.addEventListener("editor:rocket-part-mode", event => {
         if (event.detail) {
-            ensureModelRootMetadata();
             rebuildNodeObjects();
+            setNodeObjectsVisible(true);
         } else {
             setNodeEditMode(false);
             activeNodeId = null;
+            setNodeObjectsVisible(false);
+            clearNodeObjects();
         }
     });
 
@@ -80,41 +80,13 @@ export function setNodeEditMode(enabled) {
     activeNodeId = null;
     syncing = true;
     try { clearSelection(); } finally { syncing = false; }
+    setNodeObjectsVisible(true);
     highlightNodes();
     window.dispatchEvent(new CustomEvent("editor:attachment-node-mode", { detail: nodeEditMode }));
     return nodeEditMode;
 }
 
 export function toggleNodeEditMode() { return setNodeEditMode(!nodeEditMode); }
-
-export function getModelRoot() {
-    if (!sceneRef) return null;
-    const metadata = readRocketPart(sceneRef);
-    const uuid = metadata?.coordinateSystem?.modelRootUUID;
-    if (uuid) {
-        const found = sceneRef.getObjectByProperty("uuid", uuid);
-        if (found && !found.userData?.editorOnly && !found.userData?.attachmentNode) return found;
-    }
-
-    const selected = getSelected?.();
-    if (selected && !selected.userData?.editorOnly && !selected.userData?.attachmentNode) return selected;
-
-    const editorObject = sceneRef.children.find(o => o.userData?.editorObject && !o.userData?.editorOnly && !o.userData?.attachmentNode);
-    if (editorObject) return editorObject;
-
-    return sceneRef.children.find(o => !o.userData?.editorOnly && !o.userData?.attachmentNode) || null;
-}
-
-export function ensureModelRootMetadata() {
-    modelRoot = getModelRoot() || modelRoot;
-    if (!modelRoot || !sceneRef) return modelRoot;
-    const current = readRocketPart(sceneRef) || {};
-    const coordinateSystem = current.coordinateSystem || {};
-    if (coordinateSystem.modelRootUUID !== modelRoot.uuid) {
-        updateRocketPart(sceneRef, { coordinateSystem: { ...coordinateSystem, modelRootUUID: modelRoot.uuid } });
-    }
-    return modelRoot;
-}
 
 export function getAttachmentNodes() { return readRocketPart(sceneRef)?.attachmentNodes || []; }
 export function getActiveAttachmentNodeId() { return activeNodeId; }
@@ -139,12 +111,7 @@ export function clearAttachmentNodeSelection() {
 }
 
 export function addAttachmentNode(source = {}) {
-    ensureModelRootMetadata();
-    if (!sceneRef || !modelRoot) {
-        window.dispatchEvent(new CustomEvent("editor:status", { detail: "No model root available for attachment node" }));
-        return null;
-    }
-
+    if (!sceneRef) return null;
     const current = getAttachmentNodes();
     const node = createAttachmentNode({
         name: source.name || `Node ${current.length + 1}`,
@@ -155,15 +122,9 @@ export function addAttachmentNode(source = {}) {
         compatibleCategories: source.compatibleCategories || []
     });
 
-    updateRocketPart(sceneRef, {
-        attachmentNodes: [...current, node],
-        coordinateSystem: {
-            ...(readRocketPart(sceneRef)?.coordinateSystem || {}),
-            modelRootUUID: modelRoot.uuid
-        }
-    });
-
+    updateRocketPart(sceneRef, { attachmentNodes: [...current, node] });
     createNodeObject(node);
+    setNodeObjectsVisible(true);
     activeNodeId = node.id;
     if (!nodeEditMode) setNodeEditMode(true);
     highlightNodes();
@@ -208,7 +169,7 @@ export function removeAttachmentNode(nodeId) {
 export function refreshAttachmentNodeHelpers() { rebuildNodeObjects(); }
 
 function createNodeObject(node) {
-    if (!modelRoot) return null;
+    if (!sceneRef) return null;
     const object = new THREE.Mesh(
         new THREE.SphereGeometry(0.14, 24, 16),
         new THREE.MeshBasicMaterial({ color: 0x67d4ff, depthTest: false, depthWrite: false })
@@ -223,7 +184,7 @@ function createNodeObject(node) {
         editorOnly: false
     };
     object.renderOrder = 1200;
-    modelRoot.add(object);
+    sceneRef.add(object);
 
     const arrow = new THREE.ArrowHelper(
         new THREE.Vector3(0, 1, 0),
@@ -234,7 +195,12 @@ function createNodeObject(node) {
         0.075
     );
     arrow.name = `${object.name} Direction`;
-    arrow.userData = { attachmentNodeArrow: true, attachmentNodeId: node.id, selectable: false, editorOnly: false };
+    arrow.userData = {
+        attachmentNodeArrow: true,
+        attachmentNodeId: node.id,
+        selectable: false,
+        editorOnly: false
+    };
     arrow.renderOrder = 1201;
     arrow.line?.material && (arrow.line.material.depthTest = false);
     arrow.cone?.material && (arrow.cone.material.depthTest = false);
@@ -246,8 +212,7 @@ function createNodeObject(node) {
 }
 
 function rebuildNodeObjects() {
-    ensureModelRootMetadata();
-    if (!modelRoot) return;
+    if (!sceneRef) return;
     const nodes = getAttachmentNodes();
     const wanted = new Set(nodes.map(n => n.id));
 
@@ -265,17 +230,28 @@ function rebuildNodeObjects() {
     highlightNodes();
 }
 
+function clearNodeObjects() {
+    for (const object of nodeObjects.values()) {
+        object.parent?.remove(object);
+        disposeNodeObject(object);
+    }
+    nodeObjects.clear();
+}
+
+function setNodeObjectsVisible(visible) {
+    for (const object of nodeObjects.values()) object.visible = visible;
+}
+
 function applyMetadataToObject(node) {
     const object = nodeObjects.get(node.id);
     if (!object || syncing) return;
-    const origin = getReferenceOrigin();
     syncing = true;
     try {
         object.name = node.name || `Node ${node.id}`;
         object.position.set(
-            Number(node.position?.[0] || 0) + origin[0],
-            Number(node.position?.[1] || 0) + origin[1],
-            Number(node.position?.[2] || 0) + origin[2]
+            Number(node.position?.[0] || 0),
+            Number(node.position?.[1] || 0),
+            Number(node.position?.[2] || 0)
         );
         object.rotation.set(
             THREE.MathUtils.degToRad(Number(node.rotation?.[0] || 0)),
@@ -284,9 +260,7 @@ function applyMetadataToObject(node) {
         );
         updateNodeArrowVisual(object, node);
         object.updateMatrixWorld(true);
-    } finally {
-        syncing = false;
-    }
+    } finally { syncing = false; }
 }
 
 function syncNodeFromObject(object) {
@@ -296,18 +270,12 @@ function syncNodeFromObject(object) {
     const index = current.findIndex(n => n.id === nodeId);
     if (index < 0) return;
 
-    const origin = getReferenceOrigin();
-    const localPosition = [
-        object.position.x - origin[0],
-        object.position.y - origin[1],
-        object.position.z - origin[2]
-    ];
-    const euler = new THREE.Euler().setFromQuaternion(object.quaternion, "XYZ");
     const next = current.slice();
+    const euler = new THREE.Euler().setFromQuaternion(object.quaternion, "XYZ");
     next[index] = {
         ...current[index],
         name: object.name,
-        position: localPosition,
+        position: [object.position.x, object.position.y, object.position.z],
         rotation: [
             THREE.MathUtils.radToDeg(euler.x),
             THREE.MathUtils.radToDeg(euler.y),
@@ -333,10 +301,6 @@ function updateNodeArrowVisual(object, node) {
     arrow.line?.material?.color?.setHex(color);
     arrow.cone?.material?.color?.setHex(color);
     arrow.setDirection(normalizeDirection(node.direction || [0, 1, 0]));
-}
-
-function getReferenceOrigin() {
-    return normalizeVector(readRocketPart(sceneRef)?.coordinateSystem?.origin);
 }
 
 function directionFromQuaternion(quaternion) {
