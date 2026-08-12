@@ -129,22 +129,28 @@ function normalizeDirection(value) {
 }
 
 function directionFromRotation(rotation) {
-    const rx = rotation[0] * Math.PI / 180;
-    const ry = rotation[1] * Math.PI / 180;
-    const rz = rotation[2] * Math.PI / 180;
+    const [rxDeg, ryDeg, rzDeg] = rotation;
+    const rx = rxDeg * Math.PI / 180 / 2;
+    const ry = ryDeg * Math.PI / 180 / 2;
+    const rz = rzDeg * Math.PI / 180 / 2;
     const sx = Math.sin(rx), cx = Math.cos(rx);
     const sy = Math.sin(ry), cy = Math.cos(ry);
     const sz = Math.sin(rz), cz = Math.cos(rz);
 
-    const x = sx * sy * cz - cy * sz;
-    const y = sx * sy * sz + cy * cz;
-    const z = sx * cy;
+    const qx = sx * cy * cz + cx * sy * sz;
+    const qy = cx * sy * cz - sx * cy * sz;
+    const qz = cx * cy * sz + sx * sy * cz;
+    const qw = cx * cy * cz - sx * sy * sz;
+
+    const x = 2 * (qx * qy - qz * qw);
+    const y = 1 - 2 * (qx * qx + qz * qz);
+    const z = 2 * (qy * qz + qx * qw);
     return normalizeDirection([x, y, z]);
 }
 
 function rotationFromDirection(direction) {
     const [x, y, z] = normalizeDirection(direction);
-    const pitch = Math.atan2(z, Math.sqrt(x * x + y * y));
+    const pitch = Math.atan2(-z, Math.sqrt(x * x + y * y));
     const yaw = Math.atan2(x, y);
     return [pitch * 180 / Math.PI, yaw * 180 / Math.PI, 0];
 }
