@@ -8,6 +8,7 @@ import { setupImporter } from "./core/importer.js";
 import { setupCopyPaste } from "./core/copyPaste.js";
 import { setupDuplicate } from "./core/duplicate.js";
 import { toggleSnap, setupTransform, setTransformMode, setTransformSpace, toggleTransformSpace, getTransformSpace, isDraggingTransform } from "./core/transform.js";
+import { initNumericTransform } from "./core/numericTransform.js";
 import { undo, redo, canUndo, canRedo } from "./core/history.js";
 import { initScene, scene, renderer, camera, controls, createDefaultCube, grid, resetCamera, getFPS } from "./core/scene.js?v=20260811-runtime-fix";
 import { focusObject } from "./core/focus.js";
@@ -26,7 +27,7 @@ const state = { transformMode: "translate", transformSpace: "world", lastStatus:
 boot();
 
 function boot() {
-    installAdaptiveStyles(); initScene(); setupTransform(camera, renderer, scene, controls); setupSelection(renderer, camera, scene); initInspector(); initSetFocusControl(); initMaterialLibrary(); initHierarchy(scene); setupDelete(scene); setupDuplicate(scene); setupCopyPaste(scene); setupImporter(scene); setupExporter(scene); setupUpload(scene);
+    installAdaptiveStyles(); initScene(); setupTransform(camera, renderer, scene, controls); setupSelection(renderer, camera, scene); initInspector(); initSetFocusControl(); initNumericTransform(); initMaterialLibrary(); initHierarchy(scene); setupDelete(scene); setupDuplicate(scene); setupCopyPaste(scene); setupImporter(scene); setupExporter(scene); setupUpload(scene);
     const defaultCube = createDefaultCube(); addToHierarchy(defaultCube); updateInspector(null); bindUI(); bindEditorEvents(); bindKeyboard(); bindResponsiveLayer(); requestAnimationFrame(() => initMaterialLibraryPanel()); updateObjectCount(); updateHistoryButtons(); syncTransformSpaceUI(); setStatus("Ready");
 }
 
