@@ -23,6 +23,9 @@ export function initAttachmentNodeEditor(scene) {
 
     window.addEventListener("editor:rocket-part-mode", event => {
         if (event.detail) {
+            // Persist the live world transforms before the panel is re-opened.
+            // This prevents a mode toggle from restoring an old node position.
+            syncAllNodeMetadataFromObjects();
             rebuildNodeObjects();
             setNodeObjectsVisible(nodesVisible);
         } else {
@@ -262,6 +265,37 @@ function rebuildNodeObjects() {
     highlightNodes();
 }
 
+function syncAllNodeMetadataFromObjects() {
+    if (!sceneRef || !nodeObjects.size) return;
+    const metadata = readRocketPart(sceneRef);
+    const nodes = metadata?.attachmentNodes;
+    if (!Array.isArray(nodes)) return;
+
+    let changed = false;
+    for (const nodeObject of nodeObjects.values()) {
+        const nodeId = nodeObject.userData?.attachmentNodeId;
+        const entry = nodes.find(node => node.id === nodeId);
+        if (!entry) continue;
+        nodeObject.updateWorldMatrix(true, true);
+        const worldPosition = new THREE.Vector3();
+        const worldQuaternion = new THREE.Quaternion();
+        nodeObject.getWorldPosition(worldPosition);
+        nodeObject.getWorldQuaternion(worldQuaternion);
+        const euler = new THREE.Euler().setFromQuaternion(worldQuaternion, "XYZ");
+        const direction = new THREE.Vector3(0, 1, 0).applyQuaternion(worldQuaternion).normalize();
+        entry.position = worldPosition.toArray();
+        entry.rotation = [THREE.MathUtils.radToDeg(euler.x), THREE.MathUtils.radToDeg(euler.y), THREE.MathUtils.radToDeg(euler.z)];
+        entry.direction = direction.toArray();
+        changed = true;
+    }
+
+    if (changed) {
+        metadata.updatedAt = new Date().toISOString();
+        sceneRef.userData = sceneRef.userData || {};
+        sceneRef.userData.rocketPart = metadata;
+    }
+}
+
 function setNodeObjectsVisible(visible) {
     for (const object of nodeObjects.values()) {
         object.visible = !!visible;
@@ -284,8 +318,6 @@ function applyMetadataToObject(node) {
     syncing = true;
     try {
         object.name = node.name || `Node ${node.id}`;
-        object.updateMatrixWorld(true);
-
         const desiredWorldPosition = new THREE.Vector3(...normalizeVector(node.position));
         const desiredWorldQuaternion = new THREE.Quaternion().setFromEuler(new THREE.Euler(
             THREE.MathUtils.degToRad(Number(node.rotation?.[0] || 0)),
@@ -293,11 +325,9 @@ function applyMetadataToObject(node) {
             THREE.MathUtils.degToRad(Number(node.rotation?.[2] || 0)),
             "XYZ"
         ));
-
         const parent = object.parent || sceneRef;
         parent.updateWorldMatrix(true, true);
         object.position.copy(parent.worldToLocal(desiredWorldPosition.clone()));
-
         const parentWorldQuaternion = new THREE.Quaternion();
         parent.getWorldQuaternion(parentWorldQuaternion);
         object.quaternion.copy(parentWorldQuaternion.invert().multiply(desiredWorldQuaternion));
@@ -313,7 +343,6 @@ function syncNodeFromObject(object) {
     const current = getAttachmentNodes();
     const index = current.findIndex(n => n.id === nodeId);
     if (index < 0) return;
-
     object.updateWorldMatrix(true, true);
     const worldPosition = new THREE.Vector3();
     const worldQuaternion = new THREE.Quaternion();
@@ -323,21 +352,14 @@ function syncNodeFromObject(object) {
 
     const next = current.slice();
     next[index] = {
-        ...current[index],
-        name: object.name,
+        ...current[index], name: object.name,
         position: worldPosition.toArray(),
-        rotation: [
-            THREE.MathUtils.radToDeg(euler.x),
-            THREE.MathUtils.radToDeg(euler.y),
-            THREE.MathUtils.radToDeg(euler.z)
-        ],
-        direction: new THREE.Vector3(0, 1, 0).applyQuaternion(object.quaternion).normalize().toArray()
+        rotation: [THREE.MathUtils.radToDeg(euler.x), THREE.MathUtils.radToDeg(euler.y), THREE.MathUtils.radToDeg(euler.z)],
+        direction: new THREE.Vector3(0, 1, 0).applyQuaternion(worldQuaternion).normalize().toArray()
     };
-
     syncing = true;
     try { updateRocketPart(sceneRef, { attachmentNodes: next }); }
     finally { syncing = false; }
-
     activeNodeId = nodeId;
     updateNodeArrowVisual(object, next[index]);
     dispatchNodeChange(next[index], true);
