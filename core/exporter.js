@@ -7,8 +7,29 @@ const exporter = new GLTFExporter();
 export function exportScene(scene, options = {}) {
     const source = new THREE.Group();
     source.name = "ModelForgeScene";
-    scene.children.filter(object => object.userData?.editorObject && !object.userData?.editorOnly).forEach(object => source.add(object.clone(true)));
-    return new Promise((resolve, reject) => exporter.parse(source, result => resolve(result), error => reject(error), { binary: options.binary ?? false, onlyVisible: false }));
+
+    scene.children
+        .filter(object => object.userData?.editorObject && !object.userData?.editorOnly)
+        .forEach(object => {
+            const clone = object.clone(true);
+            stripEditorAttachmentNodes(clone);
+            source.add(clone);
+        });
+
+    return new Promise((resolve, reject) => exporter.parse(
+        source,
+        result => resolve(result),
+        error => reject(error),
+        { binary: options.binary ?? false, onlyVisible: false }
+    ));
+}
+
+function stripEditorAttachmentNodes(root) {
+    const remove = [];
+    root.traverse(object => {
+        if (object.userData?.attachmentNode || object.userData?.attachmentNodeExcludeFromExport) remove.push(object);
+    });
+    remove.forEach(object => object.parent?.remove(object));
 }
 
 export function setupExporter(scene) {
@@ -48,7 +69,14 @@ export async function downloadGLTF(scene) {
     const result = await exportScene(scene);
     const output = JSON.stringify(result, null, 2);
     const blob = new Blob([output], { type: "model/gltf+json" });
-    const url = URL.createObjectURL(blob); const link = document.createElement("a"); link.href = url; link.download = `${sanitize(getProjectName()) || "modelforge-scene"}.gltf`; document.body.appendChild(link); link.click(); link.remove(); setTimeout(() => URL.revokeObjectURL(url), 1000);
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `${sanitize(getProjectName()) || "modelforge-scene"}.gltf`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
     window.dispatchEvent(new CustomEvent("editor:status", { detail: "GLTF exported" }));
 }
 
