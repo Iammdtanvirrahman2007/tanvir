@@ -2,33 +2,46 @@ import * as THREE from "three";
 import { scene } from "../core/scene.js";
 
 let initialized = false;
+let vectorRoot = null;
+const arrows = new Map();
+let raf = 0;
 
 export function initNodeVectorRestore() {
     if (initialized || !scene) return;
     initialized = true;
-    refresh();
+
+    vectorRoot = new THREE.Group();
+    vectorRoot.name = "__editorNodeVectors";
+    vectorRoot.userData = { editorOnly: true, nodeVectorOverlay: true };
+    scene.add(vectorRoot);
+
     window.addEventListener("editor:rocket-part-mode", scheduleRefresh);
     window.addEventListener("editor:rocket-node-change", scheduleRefresh);
     window.addEventListener("editor:node-visibility", scheduleRefresh);
     window.addEventListener("editor:attachment-node-mode", scheduleRefresh);
-    requestAnimationFrame(refresh);
+    window.addEventListener("editor:selection-change", scheduleRefresh);
+
+    scheduleRefresh();
 }
 
-let raf = 0;
 function scheduleRefresh() {
     cancelAnimationFrame(raf);
     raf = requestAnimationFrame(refresh);
 }
 
 function refresh() {
+    if (!vectorRoot) return;
     const visible = window.__modelForgeNodesVisible !== false;
-    const metadata = scene.userData?.rocketPart;
-    const nodes = Array.isArray(metadata?.attachmentNodes) ? metadata.attachmentNodes : [];
+    vectorRoot.visible = visible;
 
-    scene.traverse(object => {
-        if (!object.userData?.attachmentNode) return;
+    const liveIds = new Set();
+    scene.traverse(node => {
+        if (!node.userData?.attachmentNode) return;
+        const id = node.userData.attachmentNodeId;
+        if (!id) return;
+        liveIds.add(id);
 
-        let arrow = object.children.find(child => child.userData?.attachmentNodeVectorArrow);
+        let arrow = arrows.get(id);
         if (!arrow) {
             arrow = new THREE.ArrowHelper(
                 new THREE.Vector3(0, 1, 0),
@@ -38,50 +51,49 @@ function refresh() {
                 0.24,
                 0.12
             );
-            arrow.name = `${object.name || "Node"} Vector`;
+            arrow.name = `${node.name || "Node"} Vector`;
             arrow.userData = {
-                attachmentNodeVectorArrow: true,
-                attachmentNodeId: object.userData.attachmentNodeId,
                 editorOnly: true,
+                attachmentNodeVectorArrow: true,
+                attachmentNodeId: id,
                 selectable: false
             };
-            arrow.frustumCulled = false;
-            arrow.renderOrder = 5000;
-            arrow.position.set(0, 0, 0);
-            object.add(arrow);
+            arrow.line?.material && Object.assign(arrow.line.material, { depthTest: false, depthWrite: false });
+            arrow.cone?.material && Object.assign(arrow.cone.material, { depthTest: false, depthWrite: false });
+            arrow.line && (arrow.line.frustumCulled = false);
+            arrow.cone && (arrow.cone.frustumCulled = false);
+            vectorRoot.add(arrow);
+            arrows.set(id, arrow);
         }
 
-        const node = nodes.find(entry => entry.id === object.userData.attachmentNodeId);
-        const direction = normalizeDirection(node?.direction || [0, 1, 0]);
-        arrow.setDirection(new THREE.Vector3(...direction));
-        arrow.setLength(0.9, 0.24, 0.12);
-        arrow.position.set(0, 0, 0);
-        arrow.visible = visible;
-        arrow.traverse(part => {
-            part.visible = visible;
-            part.frustumCulled = false;
-            part.renderOrder = 5000;
-            if (part.isLine || part.isMesh) {
-                const material = part.material;
-                if (material) {
-                    material.depthTest = false;
-                    material.depthWrite = false;
-                    material.transparent = false;
-                    material.opacity = 1;
-                    material.color?.setHex(window.__modelForgeNodeEditMode && object.userData?.attachmentNodeId === window.__modelForgeActiveNodeId ? 0xffc857 : 0x67d4ff);
-                }
-            }
-        });
-        object.updateMatrixWorld(true);
-    });
-}
+        node.updateWorldMatrix(true, false);
+        const worldPosition = new THREE.Vector3();
+        const worldQuaternion = new THREE.Quaternion();
+        node.getWorldPosition(worldPosition);
+        node.getWorldQuaternion(worldQuaternion);
+        const direction = new THREE.Vector3(0, 1, 0).applyQuaternion(worldQuaternion).normalize();
 
-function normalizeDirection(value) {
-    const x = Number(value?.[0] ?? 0);
-    const y = Number(value?.[1] ?? 1);
-    const z = Number(value?.[2] ?? 0);
-    const length = Math.hypot(x, y, z);
-    return length > 1e-8 ? [x / length, y / length, z / length] : [0, 1, 0];
+        arrow.position.copy(worldPosition);
+        arrow.setDirection(direction);
+        arrow.setLength(0.9, 0.24, 0.12);
+        arrow.visible = visible;
+        arrow.renderOrder = 5000;
+        arrow.line && (arrow.line.renderOrder = 5000, arrow.line.frustumCulled = false);
+        arrow.cone && (arrow.cone.renderOrder = 5000, arrow.cone.frustumCulled = false);
+
+        const selected = window.__modelForgeNodeEditMode === true && id === window.__modelForgeActiveNodeId;
+        const color = selected ? 0xffc857 : 0x67d4ff;
+        arrow.line?.material?.color?.setHex(color);
+        arrow.cone?.material?.color?.setHex(color);
+    });
+
+    for (const [id, arrow] of arrows) {
+        if (liveIds.has(id)) continue;
+        arrow.removeFromParent();
+        arrows.delete(id);
+    }
+
+    vectorRoot.updateMatrixWorld(true);
 }
 
 initNodeVectorRestore();
