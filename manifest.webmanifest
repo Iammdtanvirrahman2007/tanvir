@@ -14,37 +14,9 @@
   "categories": ["design", "graphics", "productivity"],
   "prefer_related_applications": false,
   "icons": [
-    {
-      "src": "/tanvir/icons/model-forge-192.png",
-      "sizes": "192x192",
-      "type": "image/png",
-      "purpose": "any"
-    },
-    {
-      "src": "/tanvir/icons/model-forge-512.png",
-      "sizes": "512x512",
-      "type": "image/png",
-      "purpose": "maskable"
-    },
-    {
-      "src": "/tanvir/icons/model-forge-512.png",
-      "sizes": "512x512",
-      "type": "image/png",
-      "purpose": "any"
-    }
+    {"src":"/tanvir/icons/model-forge-192.png","sizes":"192x192","type":"image/png","purpose":"any"},
+    {"src":"/tanvir/icons/model-forge-512.png","sizes":"512x512","type":"image/png","purpose":"maskable"},
+    {"src":"/tanvir/icons/model-forge-512.png","sizes":"512x512","type":"image/png","purpose":"any"}
   ],
-  "shortcuts": [
-    {
-      "name": "Open ModelForge",
-      "short_name": "Open",
-      "url": "/tanvir/",
-      "icons": [
-        {
-          "src": "/tanvir/icons/model-forge-192.png",
-          "sizes": "192x192",
-          "type": "image/png"
-        }
-      ]
-    }
-  ]
+  "shortcuts": [{"name":"Open ModelForge","short_name":"Open","url":"/tanvir/","icons":[{"src":"/tanvir/icons/model-forge-192.png","sizes":"192x192","type":"image/png"}]}]
 }
