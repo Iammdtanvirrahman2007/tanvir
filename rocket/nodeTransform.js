@@ -10,13 +10,15 @@ let orbitControls = null;
 let active = false;
 let mode = "translate";
 let proxy = null;
+let canvas = null;
 
 export function initNodeTransform(scene, renderer, camera, orbit = null) {
     if (controls || !scene || !renderer || !camera) return;
     sceneRef = scene;
+    canvas = renderer.domElement;
     orbitControls = orbit || defaultOrbitControls || null;
 
-    controls = new TransformControls(camera, renderer.domElement);
+    controls = new TransformControls(camera, canvas);
     controls.setMode(mode);
     controls.setSize(1.0);
     controls.setSpace("local");
@@ -32,8 +34,18 @@ export function initNodeTransform(scene, renderer, camera, orbit = null) {
     proxy.visible = false;
     scene.add(proxy);
 
+    // OrbitControls and TransformControls share the same canvas. OrbitControls
+    // sees pointerdown before TransformControls decides that a gizmo drag has
+    // started. Disable orbit in the capture phase so the camera never starts
+    // rotating underneath a selected node.
+    canvas.addEventListener("pointerdown", event => {
+        if (!active || event.button !== 0) return;
+        if (orbitControls) orbitControls.enabled = false;
+    }, true);
+
     controls.addEventListener("dragging-changed", event => {
-        if (orbitControls) orbitControls.enabled = !event.value ? false : false;
+        // Camera orbit remains disabled for the entire node-edit session.
+        if (orbitControls) orbitControls.enabled = false;
         window.dispatchEvent(new CustomEvent("editor:rocket-node-transform", {
             detail: { active: !!event.value, mode, nodeId: getActiveAttachmentNodeId() }
         }));
@@ -57,6 +69,7 @@ export function setNodeTransformMode(next) {
     mode = next;
     controls.setMode(mode);
     controls.setSpace("local");
+    if (active && orbitControls) orbitControls.enabled = false;
     updateTransformLabel();
 }
 
