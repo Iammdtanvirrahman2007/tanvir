@@ -90,7 +90,6 @@ function renderPanel() {
             action("Set Origin To Model Center", setOriginToCenter)
         ]),
         section("Attachment Nodes", [
-            info("No attachment nodes yet. The visual node editor is the next Rocket Part upgrade."),
             action("Validate Part", validateCurrent)
         ])
     );
@@ -260,13 +259,6 @@ function action(label, onClick) {
     return button;
 }
 
-function info(text) {
-    const p = document.createElement("div");
-    p.className = "rocket-part-info";
-    p.textContent = text;
-    return p;
-}
-
 function rowBase(label, stacked = false) {
     const row = document.createElement("label");
     row.className = `rocket-part-field${stacked ? " stacked" : ""}`;
@@ -281,16 +273,17 @@ function installStyles() {
     const style = document.createElement("style");
     style.id = "rocketPartModeStyles";
     style.textContent = `
-        #rocketPartPanel{position:absolute;inset:0;z-index:8;background:#15171b;overflow:auto;border-left:1px solid #2c2f35}
+        #rocketPartPanel{position:absolute;inset:0;z-index:8;background:#15171b;overflow:hidden;border-left:1px solid #2c2f35;display:flex;flex-direction:column;min-height:0}
         #rocketPartPanel[hidden]{display:none}
-        .rocket-part-head{display:flex;align-items:center;justify-content:space-between;padding:15px 14px 9px;border-bottom:1px solid #292c32}
+        .rocket-part-head{display:flex;align-items:center;justify-content:space-between;padding:15px 14px 9px;border-bottom:1px solid #292c32;flex:0 0 auto}
         .rocket-part-head h3{margin:2px 0 0;color:#eceef2;font-size:15px}
         .rocket-part-close{width:28px;height:28px;border:1px solid #333740;border-radius:5px;background:#1c1e23;color:#aeb3bd;font-size:18px;cursor:pointer}
         .rocket-part-close:hover{background:#282b32;color:#fff}
-        .rocket-part-status{display:flex;align-items:center;gap:7px;padding:8px 14px;border-bottom:1px solid #24272c;color:#7e848e;font-size:9px;letter-spacing:.11em;font-weight:700}
+        .rocket-part-status{display:flex;align-items:center;gap:7px;padding:8px 14px;border-bottom:1px solid #24272c;color:#7e848e;font-size:9px;letter-spacing:.11em;font-weight:700;flex:0 0 auto}
         .rocket-status-dot{width:7px;height:7px;border-radius:50%;background:#e4a934;box-shadow:0 0 0 3px #e4a93422}
         #rocketPartValidity{margin-left:auto}.valid{color:#7ddc9c}.invalid{color:#f08b8b}
-        .rocket-part-body{padding:10px}
+        .rocket-part-body{padding:10px 10px 72px;overflow:auto;min-height:0;flex:1;scrollbar-gutter:stable}
+        .rocket-part-body::-webkit-scrollbar{width:8px}.rocket-part-body::-webkit-scrollbar-thumb{background:#30333b;border-radius:8px}
         .rocket-part-section{border:1px solid #2b2e35;border-radius:6px;margin-bottom:8px;background:#17191e;overflow:hidden}
         .rocket-part-section-head{padding:8px 10px;border-bottom:1px solid #262930;color:#9ea4ae;font-size:9px;font-weight:700;letter-spacing:.12em;text-transform:uppercase}
         .rocket-part-section-body{display:grid;gap:7px;padding:9px}
@@ -301,8 +294,7 @@ function installStyles() {
         .rocket-part-field input:disabled{opacity:.55}
         .rocket-part-action{border:1px solid #343842;border-radius:4px;background:#202329;color:#bfc4cd;padding:7px 8px;font:600 10px system-ui;cursor:pointer}
         .rocket-part-action:hover{background:#292c33;color:#fff}
-        .rocket-part-info{padding:8px;border:1px dashed #353943;border-radius:4px;color:#737984;font:10px/1.45 system-ui}
-        @media(max-width:760px){#rocketPartPanel{position:fixed;inset:auto 0 0 0;max-height:82vh;border-left:0;border-top:1px solid #343841;border-radius:12px 12px 0 0;box-shadow:0 -20px 45px #000a}}
+        @media(max-width:760px){#rocketPartPanel{position:fixed;inset:auto 0 32px 0;max-height:calc(82vh - 32px);border-left:0;border-top:1px solid #343841;border-radius:12px 12px 0 0;box-shadow:0 -20px 45px #000a}}
     `;
     document.head.appendChild(style);
 }
