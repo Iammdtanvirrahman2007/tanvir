@@ -138,7 +138,7 @@ function calculateDimensions() {
     sceneRef.children.forEach(root => {
         if (root === sceneRef || root.userData?.editorOnly || !root.userData?.editorObject) return;
         root.traverse(object => {
-            if (!object.isMesh || object.userData?.editorOnly) return;
+            if (!object.isMesh || object.userData?.editorOnly || object.userData?.attachmentNode) return;
             box.expandByObject(object);
             found = true;
         });
