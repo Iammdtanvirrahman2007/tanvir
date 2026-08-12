@@ -113,18 +113,24 @@ function renderPanel() {
 
 function calculateDimensions() {
     if (!sceneRef) return;
-    const root = sceneRef;
+
     const box = new THREE.Box3();
     let found = false;
-    root.traverse(object => {
-        if (object === root || object.userData?.editorOnly) return;
-        if (!object.isMesh) return;
-        box.expandByObject(object);
-        found = true;
+
+    // Measure only actual ModelForge editor objects. TransformControls,
+    // node helpers and other editor overlays must never affect dimensions.
+    sceneRef.children.forEach(root => {
+        if (root === sceneRef || root.userData?.editorOnly || !root.userData?.editorObject) return;
+        root.traverse(object => {
+            if (!object.isMesh || object.userData?.editorOnly) return;
+            box.expandByObject(object);
+            found = true;
+        });
     });
-    if (!found || box.isEmpty()) return setStatus("No visible mesh geometry to measure");
+
+    if (!found || box.isEmpty()) return setStatus("No model geometry to measure");
+
     const size = box.getSize(new THREE.Vector3());
-    const center = box.getCenter(new THREE.Vector3());
     updateRocketPart(sceneRef, {
         physical: {
             height: size.y,
@@ -137,19 +143,25 @@ function calculateDimensions() {
     renderPanel();
     setStatus(`Dimensions calculated · H ${size.y.toFixed(2)} · W ${size.x.toFixed(2)} · D ${size.z.toFixed(2)}`);
     window.dispatchEvent(new CustomEvent("editor:rocket-part-change"));
-    void center;
 }
 
 function setOriginToCenter() {
     if (!sceneRef) return;
+
     const box = new THREE.Box3();
     let found = false;
-    sceneRef.traverse(object => {
-        if (object === sceneRef || object.userData?.editorOnly || !object.isMesh) return;
-        box.expandByObject(object);
-        found = true;
+
+    sceneRef.children.forEach(root => {
+        if (root === sceneRef || root.userData?.editorOnly || !root.userData?.editorObject) return;
+        root.traverse(object => {
+            if (!object.isMesh || object.userData?.editorOnly) return;
+            box.expandByObject(object);
+            found = true;
+        });
     });
-    if (!found || box.isEmpty()) return setStatus("No mesh geometry to locate center");
+
+    if (!found || box.isEmpty()) return setStatus("No model geometry to locate center");
+
     const center = box.getCenter(new THREE.Vector3());
     updateRocketPart(sceneRef, { coordinateSystem: { origin: [center.x, center.y, center.z] } });
     renderPanel();
@@ -273,7 +285,8 @@ function installStyles() {
     const style = document.createElement("style");
     style.id = "rocketPartModeStyles";
     style.textContent = `
-        #rocketPartPanel{position:absolute;inset:0;z-index:8;background:#15171b;overflow:hidden;border-left:1px solid #2c2f35;display:flex;flex-direction:column;min-height:0}
+        #rightPanel{position:relative;overflow:hidden}
+        #rocketPartPanel{position:absolute;inset:0;z-index:8;width:100%;height:100%;box-sizing:border-box;background:#15171b;overflow:hidden;border-left:1px solid #2c2f35;display:flex;flex-direction:column;min-height:0}
         #rocketPartPanel[hidden]{display:none}
         .rocket-part-head{display:flex;align-items:center;justify-content:space-between;padding:15px 14px 9px;border-bottom:1px solid #292c32;flex:0 0 auto}
         .rocket-part-head h3{margin:2px 0 0;color:#eceef2;font-size:15px}
@@ -294,7 +307,7 @@ function installStyles() {
         .rocket-part-field input:disabled{opacity:.55}
         .rocket-part-action{border:1px solid #343842;border-radius:4px;background:#202329;color:#bfc4cd;padding:7px 8px;font:600 10px system-ui;cursor:pointer}
         .rocket-part-action:hover{background:#292c33;color:#fff}
-        @media(max-width:760px){#rocketPartPanel{position:fixed;inset:auto 0 32px 0;max-height:calc(82vh - 32px);border-left:0;border-top:1px solid #343841;border-radius:12px 12px 0 0;box-shadow:0 -20px 45px #000a}}
+        @media(max-width:760px){#rocketPartPanel{position:fixed;inset:auto 0 32px 0;width:100%;max-height:calc(82vh - 32px);height:auto;border-left:0;border-top:1px solid #343841;border-radius:12px 12px 0 0;box-shadow:0 -20px 45px #000a}}
     `;
     document.head.appendChild(style);
 }
