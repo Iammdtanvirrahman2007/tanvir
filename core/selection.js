@@ -118,9 +118,6 @@ export function setupSelection(renderer, camera, scene) {
         if (event.pointerId === pointerStart?.pointerId) resetPointerState();
     }, { passive: true });
 
-    // Selection is intentionally single-click/tap only. When the explicit
-    // group "Pick Focus Object" mode is active, that same single click is
-    // consumed by the focus system instead of changing selection.
     canvas.addEventListener("click", event => {
         if (event.button !== 0 || pointerMoved || boxDragging || isDraggingTransform()) return;
         const target = pick(event, camera, scene);
@@ -163,13 +160,24 @@ function raycastAll(event, camera, scene) {
     mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
     mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
     raycaster.setFromCamera(mouse, camera);
-    return raycaster.intersectObjects(scene.children, true).filter(hit => !isEditorOnlyHit(hit.object));
+    return raycaster.intersectObjects(scene.children, true)
+        .filter(hit => !isEditorOnlyHit(hit.object))
+        .filter(hit => !isInactiveNodeHit(hit.object));
 }
 
 function isEditorOnlyHit(object) {
     let current = object;
     while (current) {
         if (current.userData?.editorOnly) return true;
+        current = current.parent;
+    }
+    return false;
+}
+
+function isInactiveNodeHit(object) {
+    let current = object;
+    while (current) {
+        if (current.userData?.attachmentNode) return window.__modelForgeNodeEditMode !== true;
         current = current.parent;
     }
     return false;
@@ -207,6 +215,7 @@ function finishBoxSelection(event, camera, scene) {
     const top = Math.min(start.y, end.y), bottom = Math.max(start.y, end.y);
     const picked = [];
     for (const object of scene.children) {
+        if (object.userData?.attachmentNode && window.__modelForgeNodeEditMode !== true) continue;
         const root = findSelectableRoot(object, scene);
         if (!root || root !== object) continue;
         const center = new THREE.Box3().setFromObject(root).getCenter(new THREE.Vector3());
@@ -222,12 +231,13 @@ function finishBoxSelection(event, camera, scene) {
 
 function cancelBoxSelection() { removeBoxElement(); }
 function removeBoxElement() { boxElement?.remove(); boxElement = null; boxDragging = false; boxStart = null; }
-function normalizeObjects(objects) { return [...new Set((objects || []).filter(object => object?.userData?.editorObject && !object?.userData?.editorOnly))]; }
+function normalizeObjects(objects) { return [...new Set((objects || []).filter(object => object?.userData?.editorObject && !object?.userData?.editorOnly && (!object?.userData?.attachmentNode || window.__modelForgeNodeEditMode === true)))]; }
 
 function findSelectableRoot(object, scene) {
     let current = object;
     let candidate = null;
     while (current && current !== scene) {
+        if (current.userData?.attachmentNode && window.__modelForgeNodeEditMode !== true) return null;
         if (current.userData?.selectable === true || current.userData?.editorGroup === true) candidate = current;
         current = current.parent;
     }
