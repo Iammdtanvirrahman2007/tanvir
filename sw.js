@@ -1,4 +1,4 @@
-const CACHE_NAME = "modelforge-shell-v3";
+const CACHE_NAME = "modelforge-shell-v4";
 
 const APP_SHELL = [
   "./",
@@ -46,9 +46,7 @@ self.addEventListener("fetch", event => {
       if (cached) return cached;
 
       return fetch(request).then(response => {
-        if (!response || (response.status !== 200 && response.type !== "opaque")) {
-          return response;
-        }
+        if (!response || (response.status !== 200 && response.type !== "opaque")) return response;
 
         const copy = response.clone();
         caches.open(CACHE_NAME)
@@ -62,7 +60,5 @@ self.addEventListener("fetch", event => {
 });
 
 self.addEventListener("message", event => {
-  if (event.data?.type === "SKIP_WAITING") {
-    self.skipWaiting();
-  }
+  if (event.data?.type === "SKIP_WAITING") self.skipWaiting();
 });
