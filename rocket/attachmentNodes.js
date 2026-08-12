@@ -7,6 +7,7 @@ let modelRoot = null;
 let activeNodeId = null;
 let initialized = false;
 let syncing = false;
+let nodeTransformActive = false;
 const nodeObjects = new Map();
 
 export function initAttachmentNodeEditor(scene) {
@@ -24,7 +25,27 @@ export function initAttachmentNodeEditor(scene) {
             activeNodeId = null;
         }
     });
-    window.addEventListener("editor:rocket-part-change", () => rebuildNodeObjects());
+
+    window.addEventListener("editor:gizmo-drag", event => {
+        const object = event.detail?.object;
+        const isNode = !!object?.userData?.attachmentNode;
+        nodeTransformActive = !!event.detail?.active && isNode;
+        if (!nodeTransformActive && !event.detail?.active) {
+            // Keep the currently selected node object alive after its drag.
+            // A normal rocket-part refresh may follow, but the object itself
+            // already contains the latest transform, so rebuilding here is not
+            // needed and would detach its TransformControls.
+            highlightNodes();
+        }
+    });
+
+    window.addEventListener("editor:rocket-part-change", () => {
+        // updateRocketPart() is also used while dragging a node. Rebuilding the
+        // node object during that gesture destroys the TransformControls
+        // attachment, which made the gizmo disappear after one drag.
+        if (nodeTransformActive) return;
+        rebuildNodeObjects();
+    });
 
     window.addEventListener("editor:selection-change", event => {
         if (syncing) return;
