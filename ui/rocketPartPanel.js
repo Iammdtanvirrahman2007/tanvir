@@ -2,6 +2,7 @@ import * as THREE from "three";
 import { PART_CATEGORIES } from "../rocket/categories.js";
 import { attachRocketPartMetadata, createDefaultRocketPart, updateRocketPart, readRocketPart } from "../rocket/rocketPart.js";
 import { validateRocketPart } from "../rocket/validation.js";
+import { initReferenceFrames, setOriginToModelCenter, setBottomPlaneFromModel, setTopPlaneFromModel, setReferenceGuidesVisible, areReferenceGuidesVisible } from "../rocket/referenceFrames.js";
 
 let sceneRef = null;
 let active = false;
@@ -11,6 +12,7 @@ export function initRocketPartPanel(scene) {
     sceneRef = scene;
     ensurePanel();
     attachRocketPartMetadata(sceneRef);
+    initReferenceFrames(sceneRef);
 }
 
 export function toggleRocketPartMode() {
@@ -87,7 +89,25 @@ function renderPanel() {
         section("Coordinate System", [
             readonlyRow("Up Axis", "Y"),
             readonlyRow("Forward Axis", "Z"),
-            action("Set Origin To Model Center", setOriginToCenter)
+            readonlyRow("Origin", formatVector(part.coordinateSystem?.origin)),
+            readonlyRow("Bottom Plane", formatNumber(part.coordinateSystem?.bottomPlaneY)),
+            readonlyRow("Top Plane", formatNumber(part.coordinateSystem?.topPlaneY)),
+            action("Set Origin To Model Center", () => {
+                const result = setOriginToModelCenter();
+                renderPanel();
+                setStatus(result ? "Origin + top/bottom planes updated" : "No model geometry to define origin");
+            }),
+            action("Set Bottom Plane From Model", () => {
+                const value = setBottomPlaneFromModel();
+                renderPanel();
+                setStatus(value == null ? "No model geometry to define bottom plane" : `Bottom plane set · Y ${Number(value).toFixed(2)}`);
+            }),
+            action("Set Top Plane From Model", () => {
+                const value = setTopPlaneFromModel();
+                renderPanel();
+                setStatus(value == null ? "No model geometry to define top plane" : `Top plane set · Y ${Number(value).toFixed(2)}`);
+            }),
+            toggle("Show Reference Guides", areReferenceGuidesVisible(), value => setReferenceGuidesVisible(value))
         ]),
         section("Attachment Nodes", [
             action("Validate Part", validateCurrent)
@@ -113,12 +133,8 @@ function renderPanel() {
 
 function calculateDimensions() {
     if (!sceneRef) return;
-
     const box = new THREE.Box3();
     let found = false;
-
-    // Measure only actual ModelForge editor objects. TransformControls,
-    // node helpers and other editor overlays must never affect dimensions.
     sceneRef.children.forEach(root => {
         if (root === sceneRef || root.userData?.editorOnly || !root.userData?.editorObject) return;
         root.traverse(object => {
@@ -127,9 +143,7 @@ function calculateDimensions() {
             found = true;
         });
     });
-
     if (!found || box.isEmpty()) return setStatus("No model geometry to measure");
-
     const size = box.getSize(new THREE.Vector3());
     updateRocketPart(sceneRef, {
         physical: {
@@ -143,29 +157,6 @@ function calculateDimensions() {
     renderPanel();
     setStatus(`Dimensions calculated · H ${size.y.toFixed(2)} · W ${size.x.toFixed(2)} · D ${size.z.toFixed(2)}`);
     window.dispatchEvent(new CustomEvent("editor:rocket-part-change"));
-}
-
-function setOriginToCenter() {
-    if (!sceneRef) return;
-
-    const box = new THREE.Box3();
-    let found = false;
-
-    sceneRef.children.forEach(root => {
-        if (root === sceneRef || root.userData?.editorOnly || !root.userData?.editorObject) return;
-        root.traverse(object => {
-            if (!object.isMesh || object.userData?.editorOnly) return;
-            box.expandByObject(object);
-            found = true;
-        });
-    });
-
-    if (!found || box.isEmpty()) return setStatus("No model geometry to locate center");
-
-    const center = box.getCenter(new THREE.Vector3());
-    updateRocketPart(sceneRef, { coordinateSystem: { origin: [center.x, center.y, center.z] } });
-    renderPanel();
-    setStatus("Rocket origin set to model center");
 }
 
 function validateCurrent() {
@@ -258,9 +249,22 @@ function textArea(label, value, onChange) {
     return row;
 }
 
-function readonlyRow(label, value) {
-    return textInput(label, value, null, true);
+function toggle(label, checked, onChange) {
+    const row = document.createElement("label");
+    row.className = "rocket-part-toggle";
+    const input = document.createElement("input");
+    input.type = "checkbox";
+    input.checked = !!checked;
+    input.addEventListener("change", () => onChange(input.checked));
+    const text = document.createElement("span");
+    text.textContent = label;
+    row.append(input, text);
+    return row;
 }
+
+function readonlyRow(label, value) { return textInput(label, value, null, true); }
+function formatVector(value) { return Array.isArray(value) ? `[${value.map(item => Number(item || 0).toFixed(2)).join(", ")}]` : "[0.00, 0.00, 0.00]"; }
+function formatNumber(value) { return Number.isFinite(Number(value)) ? Number(value).toFixed(2) : "Not set"; }
 
 function action(label, onClick) {
     const button = document.createElement("button");
@@ -307,6 +311,7 @@ function installStyles() {
         .rocket-part-field input:disabled{opacity:.55}
         .rocket-part-action{border:1px solid #343842;border-radius:4px;background:#202329;color:#bfc4cd;padding:7px 8px;font:600 10px system-ui;cursor:pointer}
         .rocket-part-action:hover{background:#292c33;color:#fff}
+        .rocket-part-toggle{display:flex;align-items:center;gap:7px;color:#9ea4ae;font-size:9px;border:1px solid #2f323a;padding:7px;border-radius:4px;background:#17191e}.rocket-part-toggle input{accent-color:#d89a24}
         @media(max-width:760px){#rocketPartPanel{position:fixed;inset:auto 0 32px 0;width:100%;max-height:calc(82vh - 32px);height:auto;border-left:0;border-top:1px solid #343841;border-radius:12px 12px 0 0;box-shadow:0 -20px 45px #000a}}
     `;
     document.head.appendChild(style);
