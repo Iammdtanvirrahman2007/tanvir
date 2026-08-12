@@ -10,18 +10,15 @@ let orbitControls = null;
 let active = false;
 let mode = "translate";
 let proxy = null;
-let canvas = null;
-let proxyStartWorld = null;
 
 export function initNodeTransform(scene, renderer, camera, orbit = null) {
     if (controls || !scene || !renderer || !camera) return;
     sceneRef = scene;
-    canvas = renderer.domElement;
     orbitControls = orbit || defaultOrbitControls || null;
 
-    controls = new TransformControls(camera, canvas);
+    controls = new TransformControls(camera, renderer.domElement);
     controls.setMode(mode);
-    controls.setSize(0.9);
+    controls.setSize(1.0);
     controls.setSpace("local");
     controls.setTranslationSnap(null);
     controls.setRotationSnap(null);
@@ -36,19 +33,11 @@ export function initNodeTransform(scene, renderer, camera, orbit = null) {
     scene.add(proxy);
 
     controls.addEventListener("dragging-changed", event => {
-        if (orbitControls) orbitControls.enabled = false;
+        if (orbitControls) orbitControls.enabled = !event.value ? false : false;
         window.dispatchEvent(new CustomEvent("editor:rocket-node-transform", {
             detail: { active: !!event.value, mode, nodeId: getActiveAttachmentNodeId() }
         }));
-
-        if (event.value) {
-            proxy?.updateMatrixWorld(true);
-            proxyStartWorld = proxy?.matrixWorld.clone() || null;
-        } else {
-            syncNodeFromProxy();
-            proxyStartWorld = null;
-            if (active && orbitControls) orbitControls.enabled = false;
-        }
+        if (!event.value) syncNodeFromProxy();
     });
 
     controls.addEventListener("objectChange", syncNodeFromProxy);
@@ -79,34 +68,24 @@ function attachNode(nodeId) {
     const modelRoot = getModelRoot();
     if (!node || !modelRoot) return detachNode();
 
-    // Isolate node editing from the normal object gizmo.
     setTransformEnabled(false);
     if (orbitControls) orbitControls.enabled = false;
 
     modelRoot.updateWorldMatrix(true, true);
     const nodeLocal = new THREE.Matrix4();
-    const nodeQuat = new THREE.Quaternion();
-    const nodeScale = new THREE.Vector3(1, 1, 1);
-    nodeQuat.setFromEuler(new THREE.Euler(
+    const nodeQuat = new THREE.Quaternion().setFromEuler(new THREE.Euler(
         THREE.MathUtils.degToRad(node.rotation?.[0] || 0),
         THREE.MathUtils.degToRad(node.rotation?.[1] || 0),
         THREE.MathUtils.degToRad(node.rotation?.[2] || 0),
         "XYZ"
     ));
-    nodeLocal.compose(new THREE.Vector3(...node.position), nodeQuat, nodeScale);
+    nodeLocal.compose(new THREE.Vector3(...node.position), nodeQuat, new THREE.Vector3(1, 1, 1));
 
     const worldMatrix = modelRoot.matrixWorld.clone().multiply(nodeLocal);
     worldMatrix.decompose(proxy.position, proxy.quaternion, proxy.scale);
-
-    // The proxy orientation follows the model so local gizmo axes match the
-    // rocket part coordinate system (Y up, Z forward).
-    const modelWorldQuat = new THREE.Quaternion();
-    const modelWorldScale = new THREE.Vector3();
-    const modelWorldPos = new THREE.Vector3();
-    modelRoot.matrixWorld.decompose(modelWorldPos, modelWorldQuat, modelWorldScale);
-    if (mode === "translate") proxy.quaternion.copy(modelWorldQuat);
-
+    proxy.scale.setScalar(1);
     proxy.updateMatrixWorld(true);
+
     active = true;
     controls.setMode(mode);
     controls.setSpace("local");
@@ -118,7 +97,6 @@ function attachNode(nodeId) {
 
 function detachNode() {
     active = false;
-    proxyStartWorld = null;
     controls?.detach();
     if (controls) {
         controls.enabled = false;
@@ -156,7 +134,6 @@ function syncNodeFromProxy() {
             THREE.MathUtils.radToDeg(euler.z)
         ];
     }
-
     updateAttachmentNode(id, patch);
 }
 
@@ -181,6 +158,3 @@ function updateTransformLabel() {
     const label = document.getElementById("rocketNodeTransformMode");
     if (label) label.textContent = mode === "translate" ? "Move" : "Rotate";
 }
-
-void canvas;
-void proxyStartWorld;
