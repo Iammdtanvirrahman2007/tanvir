@@ -37,7 +37,7 @@ export function initAttachmentNodeEditor(scene) {
             const nodeId = object.userData.attachmentNodeId;
             requestAnimationFrame(() => {
                 const currentObject = nodeObjects.get(nodeId);
-                if (!currentObject) return;
+                if (!currentObject || !nodeEditMode) return;
                 activeNodeId = nodeId;
                 syncing = true;
                 try { selectObject(currentObject); }
@@ -65,7 +65,7 @@ export function initAttachmentNodeEditor(scene) {
 
     window.addEventListener("editor:gizmo-change", event => {
         const object = event.detail?.object;
-        if (!object?.userData?.attachmentNode || syncing) return;
+        if (!object?.userData?.attachmentNode || syncing || !nodeEditMode) return;
         syncNodeFromObject(object);
     });
 }
@@ -73,12 +73,20 @@ export function initAttachmentNodeEditor(scene) {
 export function isNodeEditMode() { return nodeEditMode; }
 
 export function setNodeEditMode(enabled) {
-    nodeEditMode = !!enabled;
+    const next = !!enabled;
+    if (next === nodeEditMode) return nodeEditMode;
+
+    nodeEditMode = next;
     window.__modelForgeNodeEditMode = nodeEditMode;
 
-    if (!nodeEditMode && activeNodeId) {
-        const selected = nodeObjects.get(activeNodeId);
-        if (selected) selected.material?.color?.setHex(0x67d4ff);
+    if (nodeEditMode) {
+        // Entering Node Mode starts from a clean selection so the normal
+        // object's gizmo cannot remain active underneath the node workflow.
+        activeNodeId = null;
+        syncing = true;
+        try { clearSelection(); } finally { syncing = false; }
+    } else {
+        // Exiting Node Mode returns the editor to its ordinary selection logic.
         activeNodeId = null;
         syncing = true;
         try { clearSelection(); } finally { syncing = false; }
@@ -150,8 +158,8 @@ export function addAttachmentNode(source = {}) {
     updateRocketPart(sceneRef, { attachmentNodes: [...current, node] });
     createNodeObject(node);
     activeNodeId = node.id;
+    if (!nodeEditMode) setNodeEditMode(true);
     highlightNodes();
-    setNodeEditMode(true);
     selectAttachmentNode(node.id);
     dispatchNodeChange(node, false);
     return node;
@@ -280,9 +288,7 @@ function highlightNodes() {
 }
 
 function dispatchNodeChange(node, transforming = false) {
-    window.dispatchEvent(new CustomEvent("editor:rocket-node-change", {
-        detail: { node, transforming }
-    }));
+    window.dispatchEvent(new CustomEvent("editor:rocket-node-change", { detail: { node, transforming } }));
 }
 
 function normalizeVector(value) { return [0,1,2].map(i => Number.isFinite(Number(value?.[i])) ? Number(value[i]) : 0); }
