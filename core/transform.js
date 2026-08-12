@@ -9,12 +9,15 @@ let snapValues = { translation: 1, rotation: 15, scale: 0.1 };
 let startState = null;
 let pivotState = null;
 let spaceMode = "world";
+let transformEnabled = true;
 
 export function setupTransform(camera, renderer, scene, orbitControls) {
     transform = new TransformControls(camera, renderer.domElement);
     transform.setMode("translate");
     transform.setSize(0.85);
     applyTransformSpace();
+    transform.enabled = true;
+    transform.visible = true;
     scene.add(transform.getHelper());
     applySnapSettings();
 
@@ -76,15 +79,16 @@ export function setupTransform(camera, renderer, scene, orbitControls) {
 }
 
 export function attachTransform(object) {
-    if (!transform || !object) return;
+    if (!transform || !object || !transformEnabled) return;
     clearPivot();
     transform.attach(object);
     applyTransformSpace();
+    transform.visible = true;
     refreshInspector();
 }
 
 export function attachTransformPivot(object, worldPoint) {
-    if (!transform || !object || !worldPoint || object === transform.getHelper()) return false;
+    if (!transform || !object || !worldPoint || object === transform.getHelper() || !transformEnabled) return false;
     if (!object.parent) return false;
 
     clearPivot();
@@ -112,6 +116,7 @@ export function attachTransformPivot(object, worldPoint) {
     pivotState = { pivot, object, parent, worldPoint: worldPoint.clone() };
     transform.attach(pivot);
     applyTransformSpace();
+    transform.visible = true;
     refreshInspector();
     window.dispatchEvent(new CustomEvent("editor:transform-pivot-change", {
         detail: { object, point: worldPoint.clone(), active: true, pivot }
@@ -149,7 +154,23 @@ export function getTransformPivotPoint() { return pivotState?.worldPoint?.clone(
 export function detachTransform() {
     clearPivot();
     transform?.detach();
+    if (transform) transform.visible = false;
 }
+
+export function setTransformEnabled(enabled) {
+    transformEnabled = !!enabled;
+    if (transform) {
+        transform.enabled = transformEnabled;
+        transform.visible = transformEnabled && !!transform.object;
+        if (!transformEnabled) {
+            clearPivot();
+            transform.detach();
+        }
+    }
+    return transformEnabled;
+}
+
+export function isTransformEnabled() { return transformEnabled; }
 
 export function setTransformMode(mode) {
     if (!transform || !["translate", "rotate", "scale"].includes(mode)) return;
