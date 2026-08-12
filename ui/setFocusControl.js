@@ -15,8 +15,9 @@ export function initSetFocusControl() {
     };
 
     window.addEventListener("editor:selection-change", sync);
-    window.addEventListener("resize", syncButton, { passive: true });
-    window.addEventListener("editor:inspector-refresh", () => queueMicrotask(syncButton));
+    window.addEventListener("editor:inspector-refresh", () => queueMicrotask(sync));
+    window.addEventListener("resize", () => queueMicrotask(syncButton), { passive: true });
+
     queueMicrotask(sync);
     setTimeout(sync, 0);
 }
@@ -32,14 +33,17 @@ function syncButton() {
     const selection = getSelection();
     if (!object || selection.length !== 1 || panel.querySelector(".empty-inspector")) return;
 
+    const isGroup = object.userData?.editorGroup === true || object.isGroup === true;
+
     const wrap = document.createElement("div");
     wrap.className = "set-focus-control";
     wrap.style.cssText = "display:flex;gap:7px;margin:0 0 10px;padding:8px;border:1px solid #30343d;border-radius:7px;background:rgba(255,255,255,.025)";
 
     button = document.createElement("button");
     button.type = "button";
-    button.textContent = "◎ Set Focus";
-    button.title = object.isGroup ? "Focus the group average center" : "Focus the selected object";
+    button.textContent = isGroup ? "◎ Set Focus · Group Center" : "◎ Set Focus";
+    button.title = isGroup ? "Focus the group's current average center" : "Focus the selected object";
+    button.setAttribute("aria-label", button.title);
     button.style.cssText = "width:100%;min-height:34px;border:1px solid #454a55;border-radius:6px;background:#20232a;color:#e6e8ed;font-size:12px;font-weight:600;cursor:pointer;touch-action:manipulation;user-select:none";
 
     button.addEventListener("click", event => {
@@ -50,12 +54,15 @@ function syncButton() {
         const selectedItems = getSelection();
         if (!selected || selectedItems.length !== 1) return;
 
-        const ok = selected.isGroup
+        const selectedIsGroup = selected.userData?.editorGroup === true || selected.isGroup === true;
+        const ok = selectedIsGroup
             ? focusGroupAverage(selected, { duration: 0 })
             : focusObject(selected, { duration: 0 });
 
         window.dispatchEvent(new CustomEvent("editor:status", {
-            detail: ok ? `Focused ${selected.name || selected.type}` : "Unable to focus selected object"
+            detail: ok
+                ? (selectedIsGroup ? `Focused ${selected.name || "group"} center` : `Focused ${selected.name || selected.type}`)
+                : "Unable to focus selected object"
         }));
     });
 
