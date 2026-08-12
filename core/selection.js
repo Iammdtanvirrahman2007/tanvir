@@ -120,9 +120,18 @@ export function setupSelection(renderer, camera, scene) {
 
     canvas.addEventListener("click", event => {
         if (event.button !== 0 || pointerMoved || boxDragging || isDraggingTransform()) return;
+
+        const nodeMode = window.__modelForgeNodeEditMode === true;
         const target = pick(event, camera, scene);
         const focusConsumed = target ? consumeFocusTarget(target) : false;
         if (focusConsumed) return;
+
+        // Node Mode is an exclusive editing context. Only node spheres can
+        // be selected while it is active. All normal scene objects are locked.
+        if (nodeMode) {
+            if (target?.userData?.attachmentNode === true) selectObject(target);
+            return;
+        }
 
         const toggle = event.ctrlKey || event.metaKey || event.shiftKey;
         if (target) selectObject(target, { toggle });
@@ -138,6 +147,10 @@ function installGroupSelectionSync() {
     window.addEventListener("editor:group-selection-sync", event => {
         const detail = event.detail || {};
         const objects = normalizeObjects(detail.objects || []);
+        if (window.__modelForgeNodeEditMode === true) {
+            if (detail.mode === "single" && objects[0]?.userData?.attachmentNode) selectObject(objects[0]);
+            return;
+        }
         if (detail.mode === "single" && objects[0]) selectObject(objects[0]);
         else if (detail.mode === "multiple") selectMultiple(objects);
         else clearSelection();
@@ -146,6 +159,13 @@ function installGroupSelectionSync() {
 
 function pick(event, camera, scene) {
     const hits = raycastAll(event, camera, scene);
+    if (window.__modelForgeNodeEditMode === true) {
+        for (const hit of hits) {
+            const node = findAttachmentNode(hit.object);
+            if (node) return node;
+        }
+        return null;
+    }
     for (const hit of hits) {
         const target = findSelectableRoot(hit.object, scene);
         if (target) return target;
@@ -160,9 +180,16 @@ function raycastAll(event, camera, scene) {
     mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
     mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
     raycaster.setFromCamera(mouse, camera);
-    return raycaster.intersectObjects(scene.children, true)
-        .filter(hit => !isEditorOnlyHit(hit.object))
-        .filter(hit => !isInactiveNodeHit(hit.object));
+    return raycaster.intersectObjects(scene.children, true).filter(hit => !isEditorOnlyHit(hit.object));
+}
+
+function findAttachmentNode(object) {
+    let current = object;
+    while (current) {
+        if (current.userData?.attachmentNode === true) return current;
+        current = current.parent;
+    }
+    return null;
 }
 
 function isEditorOnlyHit(object) {
@@ -174,16 +201,8 @@ function isEditorOnlyHit(object) {
     return false;
 }
 
-function isInactiveNodeHit(object) {
-    let current = object;
-    while (current) {
-        if (current.userData?.attachmentNode) return window.__modelForgeNodeEditMode !== true;
-        current = current.parent;
-    }
-    return false;
-}
-
 function startBoxSelection(event, start) {
+    if (window.__modelForgeNodeEditMode === true) return;
     boxDragging = true;
     boxStart = { x: start.x, y: start.y };
     selectionCanvas.setPointerCapture?.(event.pointerId);
@@ -207,7 +226,7 @@ function updateBox(event) {
 }
 
 function finishBoxSelection(event, camera, scene) {
-    if (!boxDragging) return;
+    if (!boxDragging || window.__modelForgeNodeEditMode === true) return;
     const start = boxStart;
     const end = { x: event.clientX, y: event.clientY };
     const rect = selectionCanvas.getBoundingClientRect();
@@ -215,7 +234,6 @@ function finishBoxSelection(event, camera, scene) {
     const top = Math.min(start.y, end.y), bottom = Math.max(start.y, end.y);
     const picked = [];
     for (const object of scene.children) {
-        if (object.userData?.attachmentNode && window.__modelForgeNodeEditMode !== true) continue;
         const root = findSelectableRoot(object, scene);
         if (!root || root !== object) continue;
         const center = new THREE.Box3().setFromObject(root).getCenter(new THREE.Vector3());
