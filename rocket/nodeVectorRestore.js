@@ -7,10 +7,17 @@ export function initNodeVectorRestore() {
     if (initialized || !scene) return;
     initialized = true;
     refresh();
-    window.addEventListener("editor:rocket-part-mode", refresh);
-    window.addEventListener("editor:rocket-node-change", refresh);
-    window.addEventListener("editor:node-visibility", refresh);
+    window.addEventListener("editor:rocket-part-mode", scheduleRefresh);
+    window.addEventListener("editor:rocket-node-change", scheduleRefresh);
+    window.addEventListener("editor:node-visibility", scheduleRefresh);
+    window.addEventListener("editor:attachment-node-mode", scheduleRefresh);
     requestAnimationFrame(refresh);
+}
+
+let raf = 0;
+function scheduleRefresh() {
+    cancelAnimationFrame(raf);
+    raf = requestAnimationFrame(refresh);
 }
 
 function refresh() {
@@ -26,10 +33,10 @@ function refresh() {
             arrow = new THREE.ArrowHelper(
                 new THREE.Vector3(0, 1, 0),
                 new THREE.Vector3(0, 0, 0),
-                0.8,
+                0.9,
                 0x67d4ff,
-                0.22,
-                0.11
+                0.24,
+                0.12
             );
             arrow.name = `${object.name || "Node"} Vector`;
             arrow.userData = {
@@ -39,32 +46,33 @@ function refresh() {
                 selectable: false
             };
             arrow.frustumCulled = false;
-            arrow.renderOrder = 1301;
-            if (arrow.line?.material) {
-                arrow.line.material.depthTest = false;
-                arrow.line.material.depthWrite = false;
-                arrow.line.material.transparent = true;
-                arrow.line.material.opacity = 1;
-            }
-            if (arrow.cone?.material) {
-                arrow.cone.material.depthTest = false;
-                arrow.cone.material.depthWrite = false;
-                arrow.cone.material.transparent = true;
-                arrow.cone.material.opacity = 1;
-            }
+            arrow.renderOrder = 5000;
+            arrow.position.set(0, 0, 0);
             object.add(arrow);
         }
 
         const node = nodes.find(entry => entry.id === object.userData.attachmentNodeId);
         const direction = normalizeDirection(node?.direction || [0, 1, 0]);
         arrow.setDirection(new THREE.Vector3(...direction));
+        arrow.setLength(0.9, 0.24, 0.12);
         arrow.position.set(0, 0, 0);
         arrow.visible = visible;
-
-        const active = window.__modelForgeNodeEditMode === true && object.userData?.selected === true;
-        const hex = active ? 0xffc857 : 0x67d4ff;
-        arrow.line?.material?.color?.setHex(hex);
-        arrow.cone?.material?.color?.setHex(hex);
+        arrow.traverse(part => {
+            part.visible = visible;
+            part.frustumCulled = false;
+            part.renderOrder = 5000;
+            if (part.isLine || part.isMesh) {
+                const material = part.material;
+                if (material) {
+                    material.depthTest = false;
+                    material.depthWrite = false;
+                    material.transparent = false;
+                    material.opacity = 1;
+                    material.color?.setHex(window.__modelForgeNodeEditMode && object.userData?.attachmentNodeId === window.__modelForgeActiveNodeId ? 0xffc857 : 0x67d4ff);
+                }
+            }
+        });
+        object.updateMatrixWorld(true);
     });
 }
 
