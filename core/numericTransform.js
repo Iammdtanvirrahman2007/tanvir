@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { setTransformMode, setAxis, getTransformSpace } from "./transform.js";
+import { setTransformMode, setAxis, getTransformSpace } from "./transform.js?v=20260812-transform-axis-fix-4";
 import { getSelected } from "./selection.js";
 import { pushHistory } from "./history.js";
 
