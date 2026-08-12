@@ -23,10 +23,10 @@ export function initNodeTransform(scene, renderer, camera, orbit = null) {
 
     controls.addEventListener("dragging-changed", event => {
         if (orbitControls) orbitControls.enabled = !event.value;
-        if (!event.value) syncNodeFromHelper();
         window.dispatchEvent(new CustomEvent("editor:rocket-node-transform", {
             detail: { active: !!event.value, mode, nodeId: getActiveAttachmentNodeId() }
         }));
+        if (!event.value) syncNodeFromHelper();
     });
 
     controls.addEventListener("objectChange", syncNodeFromHelper);
@@ -45,6 +45,7 @@ export function setNodeTransformMode(next) {
     if (!controls || !["translate", "rotate"].includes(next)) return;
     mode = next;
     controls.setMode(mode);
+    controls.setSpace(mode === "rotate" ? "local" : "world");
     updateTransformLabel();
 }
 
@@ -59,6 +60,7 @@ function attachNode(nodeId) {
     targetHelper = helper;
     active = true;
     controls.setMode(mode);
+    controls.setSpace(mode === "rotate" ? "local" : "world");
     controls.attach(helper);
     controls.visible = true;
     updateTransformLabel();
@@ -69,6 +71,10 @@ function detachNode() {
     targetHelper = null;
     controls?.detach();
     if (controls) controls.visible = false;
+    if (orbitControls) orbitControls.enabled = true;
+    window.dispatchEvent(new CustomEvent("editor:rocket-node-transform", {
+        detail: { active: false, mode, nodeId: null }
+    }));
     updateTransformLabel();
 }
 
@@ -99,10 +105,11 @@ function onKeyDown(event) {
     const target = event.target;
     if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement) return;
     const key = event.key.toLowerCase();
-    if (key !== "g" && key !== "r") return;
-    event.preventDefault();
-    event.stopImmediatePropagation();
-    setNodeTransformMode(key === "g" ? "translate" : "rotate");
+    if (key === "g" || key === "r") {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        setNodeTransformMode(key === "g" ? "translate" : "rotate");
+    }
 }
 
 function updateTransformLabel() {
