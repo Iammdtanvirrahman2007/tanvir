@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { getTransform, setTransformMode, setAxis, getTransformSpace } from "./transform.js";
+import { setTransformMode, setAxis, getTransformSpace } from "./transform.js";
 import { getSelected } from "./selection.js";
 import { pushHistory } from "./history.js";
 
@@ -9,12 +9,15 @@ let buffer = "";
 let active = false;
 let startState = null;
 let fromGizmo = false;
+let freeGizmoMove = false;
+let statusEl = null;
 
 export function initNumericTransform() {
     if (window.__modelForgeNumericTransform) return;
     window.__modelForgeNumericTransform = true;
-
+    installStatusStyles();
     window.addEventListener("keydown", onKeyDown);
+
     window.addEventListener("pointerdown", event => {
         if (!active || fromGizmo) return;
         if (event.target?.closest?.("canvas")) return;
@@ -25,20 +28,24 @@ export function initNumericTransform() {
         const detail = event.detail || {};
         const object = detail.object || getSelected();
         if (!object) return;
+
         if (detail.active) {
             fromGizmo = true;
             mode = detail.mode || mode || "translate";
-            axis = detail.axis ? String(detail.axis).toLowerCase() : axis;
+            axis = detail.axis ? String(detail.axis).toLowerCase() : null;
+            freeGizmoMove = !axis && mode === "translate";
             active = true;
-            startState = startState || capture(object);
-            showHUD();
-            syncHUDFromObject(object);
+            startState = capture(object);
+            showStatus();
+            syncStatusFromObject(object);
             return;
         }
+
         fromGizmo = false;
+        freeGizmoMove = false;
         if (active) {
-            syncHUDFromObject(object);
-            hideHUDSoon();
+            syncStatusFromObject(object);
+            hideStatusSoon();
         }
     });
 
@@ -48,24 +55,26 @@ export function initNumericTransform() {
         const object = detail.object || getSelected();
         if (!object) return;
         mode = detail.mode || mode;
-        axis = detail.axis ? String(detail.axis).toLowerCase() : axis;
-        showHUD();
-        syncHUDFromObject(object);
+        axis = detail.axis ? String(detail.axis).toLowerCase() : null;
+        freeGizmoMove = !axis && mode === "translate";
+        showStatus();
+        syncStatusFromObject(object);
     });
 
     window.addEventListener("editor:transform-mode", event => {
         if (!active) return;
         mode = event.detail || mode;
-        updateHUD();
+        updateStatus();
     });
 
     window.addEventListener("editor:transform-axis", event => {
         if (!active) return;
         axis = event.detail ? String(event.detail).toLowerCase() : null;
-        syncHUDFromObject(getSelected());
+        freeGizmoMove = fromGizmo && !axis && mode === "translate";
+        syncStatusFromObject(getSelected());
     });
 
-    window.addEventListener("editor:transform-space", updateHUD);
+    window.addEventListener("editor:transform-space", updateStatus);
 }
 
 function onKeyDown(event) {
@@ -78,6 +87,7 @@ function onKeyDown(event) {
     if (key === "g" || key === "r" || key === "s") {
         if (!selected) return;
         fromGizmo = false;
+        freeGizmoMove = false;
         mode = key === "g" ? "translate" : key === "r" ? "rotate" : "scale";
         setTransformMode(mode);
         axis = null;
@@ -85,8 +95,8 @@ function onKeyDown(event) {
         buffer = "";
         active = true;
         startState = capture(selected);
-        showHUD();
-        updateHUD();
+        showStatus();
+        updateStatus();
         return;
     }
 
@@ -107,7 +117,7 @@ function onKeyDown(event) {
         axis = axis === key ? null : key;
         setAxis(axis ? axis.toUpperCase() : null);
         buffer = "";
-        updateHUD();
+        updateStatus();
         return;
     }
 
@@ -115,12 +125,13 @@ function onKeyDown(event) {
         if (event.key === "." && buffer.includes(".")) return;
         buffer += event.key;
         applyPreview(selected);
-        updateHUD();
+        updateStatus();
     }
+
     if (event.key === "Backspace") {
         buffer = buffer.slice(0, -1);
         applyPreview(selected);
-        updateHUD();
+        updateStatus();
     }
 }
 
@@ -174,53 +185,41 @@ function refresh() {
     window.dispatchEvent(new CustomEvent("editor:selection-change", { detail: getSelected() ? [getSelected()] : [] }));
 }
 
-function showHUD() {
-    let hud = document.getElementById("numericTransformHUD");
-    if (hud) return;
-    hud = document.createElement("div");
-    hud.id = "numericTransformHUD";
-    hud.innerHTML = `
-        <div class="numeric-hud-main">
-            <strong id="numericMode">Move</strong>
-            <span class="numeric-hud-sep">•</span>
-            <span id="numericAxis">Free</span>
-            <code id="numericValue">0</code>
-        </div>
-        <div class="numeric-hud-meta">
-            <span id="numericSpace">WORLD</span>
-            <span>Enter Apply</span>
-            <span>Esc Cancel</span>
-        </div>
-    `;
-    hud.style.cssText = `
-        position:fixed;
-        right:14px;
-        bottom:31px;
-        z-index:45;
-        min-width:158px;
-        padding:7px 9px;
-        border:1px solid #30333b;
-        border-radius:6px;
-        background:rgba(23,24,29,.94);
-        color:#cfd2da;
-        font:11px system-ui,sans-serif;
-        box-shadow:0 8px 24px rgba(0,0,0,.28);
-        backdrop-filter:blur(8px);
-        pointer-events:none;
-        user-select:none;
-    `;
-    const style = document.createElement("style");
-    style.textContent = `#numericTransformHUD .numeric-hud-main{display:flex;align-items:center;gap:7px;line-height:1.2}#numericTransformHUD .numeric-hud-main strong{font-weight:650;color:#f0f1f3}#numericTransformHUD .numeric-hud-sep{color:#626671}#numericTransformHUD #numericAxis{color:#b5b8c0}#numericTransformHUD code{margin-left:auto;color:#fff;font:600 11px ui-monospace,SFMono-Regular,Consolas,monospace}#numericTransformHUD .numeric-hud-meta{display:flex;justify-content:space-between;gap:8px;margin-top:5px;padding-top:5px;border-top:1px solid #2a2c33;color:#6f737d;font-size:8px;text-transform:uppercase;letter-spacing:.35px}#numericTransformHUD #numericSpace{color:#aeb2bd;font-weight:700}@media(max-width:760px){#numericTransformHUD{right:10px!important;bottom:32px!important;min-width:146px!important;padding:6px 8px!important}}`;
-    document.head.appendChild(style);
-    document.body.appendChild(hud);
+function showStatus() {
+    if (statusEl && document.body.contains(statusEl)) return;
+    const host = document.querySelector("#statusBar .status-left") || document.getElementById("statusBar");
+    if (!host) return;
+    statusEl = document.createElement("span");
+    statusEl.id = "numericTransformStatus";
+    statusEl.setAttribute("aria-live", "polite");
+    host.appendChild(statusEl);
 }
 
-function syncHUDFromObject(object) {
+function syncStatusFromObject(object) {
     if (!object) return;
+    showStatus();
+    if (!statusEl) return;
+
+    if (fromGizmo && mode === "translate" && freeGizmoMove && startState) {
+        const dx = object.position.x - startState.position.x;
+        const dy = object.position.y - startState.position.y;
+        const dz = object.position.z - startState.position.z;
+        statusEl.innerHTML = `<strong>Move</strong><span class="nt-sep">•</span><span>Free</span><span class="nt-delta">ΔX ${fmtSigned(dx)}</span><span class="nt-delta">ΔY ${fmtSigned(dy)}</span><span class="nt-delta">ΔZ ${fmtSigned(dz)}</span>`;
+        return;
+    }
+
     const value = getAxisValue(object);
-    if (value === null) return;
-    buffer = formatValue(value);
-    updateHUD();
+    const axisLabel = axis ? axis.toUpperCase() : "Free";
+    const displayValue = fromGizmo && startState && axis ? getGizmoDelta(object) : (fromGizmo ? value : (buffer || value));
+    statusEl.innerHTML = `<strong>${modeName()}</strong><span class="nt-sep">•</span><span>${axisLabel}</span><span class="nt-value">${fmtValue(displayValue)}</span><span class="nt-space">${getTransformSpace().toUpperCase()}</span>`;
+}
+
+function getGizmoDelta(object) {
+    if (!startState || !axis) return 0;
+    if (mode === "translate") return object.position[axis] - startState.position[axis];
+    if (mode === "rotate") return THREE.MathUtils.radToDeg(object.rotation[axis] - startState.rotation[axis]);
+    if (mode === "scale") return object.scale[axis] - startState.scale[axis];
+    return 0;
 }
 
 function getAxisValue(object) {
@@ -231,35 +230,60 @@ function getAxisValue(object) {
     return 0;
 }
 
-function formatValue(value) {
-    if (!Number.isFinite(value)) return "0";
-    return String(Number(value.toFixed(4)));
+function modeName() {
+    return ({ translate: "Move", rotate: "Rotate", scale: "Scale" })[mode] || "Transform";
 }
 
-function updateHUD() {
-    const hud = document.getElementById("numericTransformHUD");
-    if (!hud) return;
-    const names = { translate: "Move", rotate: "Rotate", scale: "Scale" };
-    hud.querySelector("#numericMode").textContent = names[mode] || "Transform";
-    hud.querySelector("#numericAxis").textContent = axis ? axis.toUpperCase() : "Free";
-    hud.querySelector("#numericValue").textContent = buffer || "0";
-    const space = getTransformSpace?.() || "world";
-    hud.querySelector("#numericSpace").textContent = space.toUpperCase();
+function fmtSigned(value) {
+    const rounded = Number(value.toFixed(3));
+    return `${rounded >= 0 ? "+" : ""}${rounded}`;
 }
 
-function hideHUDSoon() {
+function fmtValue(value) {
+    if (!Number.isFinite(Number(value))) return "0";
+    return String(Number(Number(value).toFixed(3)));
+}
+
+function updateStatus() {
+    showStatus();
+    if (!statusEl) return;
+    const axisLabel = axis ? axis.toUpperCase() : "Free";
+    statusEl.innerHTML = `<strong>${modeName()}</strong><span class="nt-sep">•</span><span>${axisLabel}</span><span class="nt-value">${buffer || "0"}</span><span class="nt-space">${getTransformSpace().toUpperCase()}</span>`;
+}
+
+function installStatusStyles() {
+    if (document.getElementById("modelForgeNumericStatusStyles")) return;
+    const style = document.createElement("style");
+    style.id = "modelForgeNumericStatusStyles";
+    style.textContent = `
+        #numericTransformStatus{display:inline-flex;align-items:center;gap:7px;margin-left:10px;color:#8f949f;font-size:10px;white-space:nowrap}
+        #numericTransformStatus strong{color:#e7e9ed;font-weight:650}
+        #numericTransformStatus .nt-sep{color:#555a64}
+        #numericTransformStatus .nt-value{color:#f2f3f5;font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-weight:600}
+        #numericTransformStatus .nt-space{color:#a7acb6;font-size:8px;font-weight:700;letter-spacing:.45px}
+        #numericTransformStatus .nt-delta{color:#b6bbc4;font-family:ui-monospace,SFMono-Regular,Consolas,monospace}
+        @media(max-width:760px){#numericTransformStatus{gap:5px;margin-left:7px;font-size:9px}.nt-delta{font-size:8px}}
+    `;
+    document.head.appendChild(style);
+}
+
+function hideStatusSoon() {
     window.setTimeout(() => {
-        if (!fromGizmo && !active) document.getElementById("numericTransformHUD")?.remove();
-    }, 120);
+        if (fromGizmo || active) return;
+        statusEl?.remove();
+        statusEl = null;
+    }, 180);
 }
 
 function cancel() {
     active = false;
     fromGizmo = false;
+    freeGizmoMove = false;
     mode = null;
     axis = null;
     buffer = "";
     startState = null;
     setAxis(null);
-    document.getElementById("numericTransformHUD")?.remove();
+    statusEl?.remove();
+    statusEl = null;
 }
