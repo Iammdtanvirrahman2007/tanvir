@@ -30,19 +30,21 @@ export function initAttachmentNodeEditor(scene) {
         const object = event.detail?.object;
         const isNode = !!object?.userData?.attachmentNode;
         nodeTransformActive = !!event.detail?.active && isNode;
-        if (!nodeTransformActive && !event.detail?.active) {
-            // Keep the currently selected node object alive after its drag.
-            // A normal rocket-part refresh may follow, but the object itself
-            // already contains the latest transform, so rebuilding here is not
-            // needed and would detach its TransformControls.
-            highlightNodes();
+        if (!nodeTransformActive && !event.detail?.active && isNode) {
+            const nodeId = object.userData.attachmentNodeId;
+            requestAnimationFrame(() => {
+                const currentObject = nodeObjects.get(nodeId);
+                if (!currentObject) return;
+                activeNodeId = nodeId;
+                syncing = true;
+                try { selectObject(currentObject); }
+                finally { syncing = false; }
+                highlightNodes();
+            });
         }
     });
 
     window.addEventListener("editor:rocket-part-change", () => {
-        // updateRocketPart() is also used while dragging a node. Rebuilding the
-        // node object during that gesture destroys the TransformControls
-        // attachment, which made the gizmo disappear after one drag.
         if (nodeTransformActive) return;
         rebuildNodeObjects();
     });
@@ -123,7 +125,7 @@ export function addAttachmentNode(source = {}) {
     activeNodeId = node.id;
     highlightNodes();
     selectAttachmentNode(node.id);
-    dispatchNodeChange(node);
+    dispatchNodeChange(node, false);
     return node;
 }
 
@@ -138,7 +140,7 @@ export function updateAttachmentNode(nodeId, patch = {}) {
     const next = current.slice(); next[index] = node;
     updateRocketPart(sceneRef, { attachmentNodes: next });
     applyMetadataToObject(node);
-    dispatchNodeChange(node);
+    dispatchNodeChange(node, false);
     return node;
 }
 
@@ -155,7 +157,7 @@ export function removeAttachmentNode(nodeId) {
     }
     updateRocketPart(sceneRef, { attachmentNodes: next });
     if (activeNodeId === nodeId) clearAttachmentNodeSelection();
-    dispatchNodeChange(null);
+    dispatchNodeChange(null, false);
     return true;
 }
 
@@ -170,6 +172,7 @@ function createNodeObject(node) {
     object.name = node.name || `Node ${node.id}`;
     object.userData = {
         selectable: true,
+        editorObject: true,
         attachmentNode: true,
         attachmentNodeId: node.id,
         attachmentNodeExcludeFromExport: true,
@@ -238,7 +241,7 @@ function syncNodeFromObject(object) {
     try { updateRocketPart(sceneRef, { attachmentNodes: next }); }
     finally { syncing = false; }
     activeNodeId = nodeId;
-    dispatchNodeChange(next[index]);
+    dispatchNodeChange(next[index], true);
 }
 
 function highlightNodes() {
@@ -247,7 +250,12 @@ function highlightNodes() {
     }
 }
 
-function dispatchNodeChange(node) { window.dispatchEvent(new CustomEvent("editor:rocket-node-change", { detail: node })); }
+function dispatchNodeChange(node, transforming = false) {
+    window.dispatchEvent(new CustomEvent("editor:rocket-node-change", {
+        detail: { node, transforming }
+    }));
+}
+
 function normalizeVector(value) { return [0,1,2].map(i => Number.isFinite(Number(value?.[i])) ? Number(value[i]) : 0); }
 export function autoPlaceNode() { return null; }
 export function upsertPresetNode() { return null; }
