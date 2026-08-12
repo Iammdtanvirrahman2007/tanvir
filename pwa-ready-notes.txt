@@ -1,0 +1,1 @@
+PWA preparation in progress. Binary PNG icons are being committed through Git objects.
