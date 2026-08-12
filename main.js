@@ -18,6 +18,7 @@ import { addObject, getObjects } from "./core/objectManager.js";
 import { addToHierarchy, initHierarchy, rebuildHierarchy } from "./ui/hierarchy.js";
 import { initInspector, updateInspector } from "./ui/inspector.js";
 import { initSetFocusControl } from "./ui/setFocusControl.js";
+import { initPivotControl } from "./ui/pivotControl.js";
 import { initMaterialLibrary } from "./core/materialLibrary.js";
 import { initMaterialLibraryPanel } from "./ui/materialLibraryPanel.js";
 import { createObject } from "./objects/factory.js";
@@ -27,7 +28,7 @@ const state = { transformMode: "translate", transformSpace: "world", lastStatus:
 boot();
 
 function boot() {
-    installAdaptiveStyles(); initScene(); setupTransform(camera, renderer, scene, controls); setupSelection(renderer, camera, scene); initInspector(); initSetFocusControl(); initNumericTransform(); initMaterialLibrary(); initHierarchy(scene); setupDelete(scene); setupDuplicate(scene); setupCopyPaste(scene); setupImporter(scene); setupExporter(scene); setupUpload(scene);
+    installAdaptiveStyles(); initScene(); setupTransform(camera, renderer, scene, controls); setupSelection(renderer, camera, scene); initInspector(); initSetFocusControl(); initPivotControl(); initNumericTransform(); initMaterialLibrary(); initHierarchy(scene); setupDelete(scene); setupDuplicate(scene); setupCopyPaste(scene); setupImporter(scene); setupExporter(scene); setupUpload(scene);
     const defaultCube = createDefaultCube(); addToHierarchy(defaultCube); updateInspector(null); bindUI(); bindEditorEvents(); bindKeyboard(); bindResponsiveLayer(); requestAnimationFrame(() => initMaterialLibraryPanel()); updateObjectCount(); updateHistoryButtons(); syncTransformSpaceUI(); setStatus("Ready");
 }
 
