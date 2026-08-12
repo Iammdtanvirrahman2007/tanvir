@@ -1,4 +1,5 @@
-const CACHE_NAME = "modelforge-shell-v2";
+const CACHE_NAME = "modelforge-shell-v3";
+
 const APP_SHELL = [
   "./",
   "./index.html",
@@ -7,9 +8,7 @@ const APP_SHELL = [
   "./favicon.svg",
   "./manifest.webmanifest",
   "./icons/model-forge-192.png",
-  "./icons/model-forge-512.png",
-  "./icons/model-forge-192.svg",
-  "./icons/model-forge-512.svg"
+  "./icons/model-forge-512.png"
 ];
 
 self.addEventListener("install", event => {
@@ -24,7 +23,9 @@ self.addEventListener("activate", event => {
   event.waitUntil(
     caches.keys()
       .then(keys => Promise.all(
-        keys.filter(key => key !== CACHE_NAME).map(key => caches.delete(key))
+        keys
+          .filter(key => key !== CACHE_NAME)
+          .map(key => caches.delete(key))
       ))
       .then(() => self.clients.claim())
   );
@@ -50,7 +51,10 @@ self.addEventListener("fetch", event => {
         }
 
         const copy = response.clone();
-        caches.open(CACHE_NAME).then(cache => cache.put(request, copy)).catch(() => {});
+        caches.open(CACHE_NAME)
+          .then(cache => cache.put(request, copy))
+          .catch(() => {});
+
         return response;
       }).catch(() => caches.match("./index.html"));
     })
@@ -58,5 +62,7 @@ self.addEventListener("fetch", event => {
 });
 
 self.addEventListener("message", event => {
-  if (event.data?.type === "SKIP_WAITING") self.skipWaiting();
+  if (event.data?.type === "SKIP_WAITING") {
+    self.skipWaiting();
+  }
 });
