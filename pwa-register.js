@@ -19,10 +19,12 @@
         .catch(error => console.warn('ModelForge PWA registration failed:', error));
     }
 
-    import('./rocket/nodeModelFollow.js?v=20260812-node-follow-7')
-      .catch(error => console.warn('ModelForge node follow failed:', error));
+    // Node follow is intentionally NOT started here. Nodes are children of
+    // their model, so Three.js already keeps them attached during normal
+    // object transforms. A per-frame metadata sync would rebuild node objects
+    // while dragging and make Node Mode impossible to transform reliably.
 
-    import('./rocket/nodeVectorRenderer.js?v=20260812-node-vector-render-3')
+    import('./rocket/nodeVectorRenderer.js?v=20260812-node-vector-render-4')
       .then(module => {
         const start = () => {
           try { module.initNodeVectorRenderer(); }
