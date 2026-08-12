@@ -1,4 +1,4 @@
-const CACHE_NAME = "modelforge-shell-v4";
+const CACHE_NAME = "modelforge-shell-v5";
 
 const APP_SHELL = [
   "./",
