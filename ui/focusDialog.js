@@ -26,7 +26,7 @@ export function openGroupFocusDialog(group) {
             </button>
             <button type="button" data-focus="select">
                 <span class="focus-dialog-icon">⌖</span>
-                <span><strong>Select Focus</strong><small>Double-click an item inside this group to make that item's center the transform pivot</small></span>
+                <span><strong>Pick Focus Object</strong><small>Then single-click an item inside this group to use that item's center as the transform pivot</small></span>
             </button>
         </div>
         <button type="button" class="focus-dialog-cancel">Cancel</button>
@@ -39,7 +39,7 @@ export function openGroupFocusDialog(group) {
     });
     dialog.querySelector('[data-focus="select"]').addEventListener("click", () => {
         setFocusMode(group, "select");
-        window.dispatchEvent(new CustomEvent("editor:status", { detail: `Select Focus: double-click an item inside ${group.name || "group"}` }));
+        window.dispatchEvent(new CustomEvent("editor:status", { detail: `Pick Focus Object: click an item inside ${group.name || "group"}` }));
         close();
     });
     dialog.querySelector(".focus-dialog-cancel").addEventListener("click", close);
