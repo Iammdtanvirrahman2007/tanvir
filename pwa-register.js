@@ -21,8 +21,8 @@
     import('./rocket/referenceGuidesUI.js?v=20260812-reference-1')
       .then(({ initReferenceGuidesUI }) => initReferenceGuidesUI())
       .catch(error => console.warn('ModelForge reference guides failed:', error));
-    import('./rocket/nodeArrowOverlay.js?v=20260812-node-vector-1')
-      .catch(error => console.warn('ModelForge node vector arrows failed:', error));
+    import('./rocket/nodeModelFollow.js?v=20260812-node-follow-1')
+      .catch(error => console.warn('ModelForge node follow failed:', error));
   };
 
   if (document.readyState === 'loading') {
