@@ -8,11 +8,13 @@ let snapEnabled = false;
 let snapValues = { translation: 1, rotation: 15, scale: 0.1 };
 let startState = null;
 let pivotState = null;
+let spaceMode = "world";
 
 export function setupTransform(camera, renderer, scene, orbitControls) {
     transform = new TransformControls(camera, renderer.domElement);
     transform.setMode("translate");
     transform.setSize(0.85);
+    applyTransformSpace();
     scene.add(transform.getHelper());
     applySnapSettings();
 
@@ -36,7 +38,7 @@ export function setupTransform(camera, renderer, scene, orbitControls) {
 
         const historyObject = object;
         pushHistory({
-            label: `${transform.mode} transform`,
+            label: `${transform.mode} ${spaceMode} transform`,
             undo: () => { restoreWorld(historyObject, startState); refreshInspector(); },
             redo: () => { restoreWorld(historyObject, endState); refreshInspector(); }
         });
@@ -53,14 +55,10 @@ export function attachTransform(object) {
     if (!transform || !object) return;
     clearPivot();
     transform.attach(object);
+    applyTransformSpace();
     refreshInspector();
 }
 
-/**
- * Attach a group/object to an invisible pivot at a world-space point.
- * The object's world transform is preserved when the pivot is created and
- * when the pivot is removed, so changing the pivot never makes the model jump.
- */
 export function attachTransformPivot(object, worldPoint) {
     if (!transform || !object || !worldPoint || object === transform.getHelper()) return false;
     if (!object.parent) return false;
@@ -84,26 +82,15 @@ export function attachTransformPivot(object, worldPoint) {
     pivot.scale.set(1, 1, 1);
     pivot.updateMatrixWorld(true);
 
-    // THREE.Object3D.attach preserves the object's world transform.
     pivot.attach(object);
     pivot.updateMatrixWorld(true);
 
-    pivotState = {
-        pivot,
-        object,
-        parent,
-        worldPoint: worldPoint.clone()
-    };
-
+    pivotState = { pivot, object, parent, worldPoint: worldPoint.clone() };
     transform.attach(pivot);
+    applyTransformSpace();
     refreshInspector();
     window.dispatchEvent(new CustomEvent("editor:transform-pivot-change", {
-        detail: {
-            object,
-            point: worldPoint.clone(),
-            active: true,
-            pivot
-        }
+        detail: { object, point: worldPoint.clone(), active: true, pivot }
     }));
     return true;
 }
@@ -117,9 +104,6 @@ export function clearPivot() {
     world.copy(object.matrixWorld);
 
     transform?.detach();
-
-    // Reparent while preserving the exact world transform. This is critical
-    // after a rotate/scale operation around a custom group pivot.
     if (object && parent) {
         parent.attach(object);
         restoreWorld(object, world);
@@ -129,9 +113,7 @@ export function clearPivot() {
     pivotState = null;
     startState = null;
 
-    window.dispatchEvent(new CustomEvent("editor:transform-pivot-change", {
-        detail: { active: false }
-    }));
+    window.dispatchEvent(new CustomEvent("editor:transform-pivot-change", { detail: { active: false } }));
     refreshInspector();
 }
 
@@ -152,6 +134,21 @@ export function setTransformMode(mode) {
 }
 
 export function getTransformMode() { return transform?.mode || "translate"; }
+
+export function setTransformSpace(space) {
+    const normalized = String(space || "").toLowerCase();
+    if (!transform || !["world", "local"].includes(normalized)) return spaceMode;
+    spaceMode = normalized;
+    applyTransformSpace();
+    window.dispatchEvent(new CustomEvent("editor:transform-space", { detail: spaceMode }));
+    return spaceMode;
+}
+
+export function toggleTransformSpace() {
+    return setTransformSpace(spaceMode === "world" ? "local" : "world");
+}
+
+export function getTransformSpace() { return spaceMode; }
 
 export function setAxis(axis) {
     if (!transform || !["X", "Y", "Z", null].includes(axis)) return;
@@ -183,6 +180,11 @@ export function setSnapValues(values = {}) {
 export function getSnapValues() { return { ...snapValues }; }
 export function isDraggingTransform() { return !!transform?.dragging; }
 export function getTransform() { return transform; }
+
+function applyTransformSpace() {
+    if (!transform) return;
+    transform.setSpace(spaceMode);
+}
 
 function applySnapSettings() {
     if (!transform) return;
