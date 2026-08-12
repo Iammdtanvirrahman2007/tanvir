@@ -1,6 +1,5 @@
 import * as THREE from "three";
 import { scene } from "../core/scene.js";
-import { readRocketPart, updateRocketPart } from "./rocketPart.js";
 
 let initialized = false;
 let lastSnapshot = "";
@@ -15,7 +14,9 @@ export function initNodeModelFollow() {
 }
 
 function tick() {
-    syncNodeMetadata();
+    // Nodes are children of the model root, so Three.js already moves them
+    // with the model. We only persist their current world transform here.
+    syncNodeMetadata(false);
     requestAnimationFrame(tick);
 }
 
@@ -25,13 +26,13 @@ function queueSync() {
     requestAnimationFrame(() => {
         queued = false;
         lastSnapshot = "";
-        syncNodeMetadata();
+        syncNodeMetadata(true);
     });
 }
 
-function syncNodeMetadata() {
-    const part = readRocketPart(scene);
-    const list = part?.attachmentNodes;
+function syncNodeMetadata(force = false) {
+    const raw = scene.userData?.rocketPart;
+    const list = raw?.attachmentNodes;
     if (!Array.isArray(list) || !list.length) return;
 
     const updated = new Map();
@@ -47,8 +48,8 @@ function syncNodeMetadata() {
         object.getWorldPosition(worldPosition);
         object.getWorldQuaternion(worldQuaternion);
         const euler = new THREE.Euler().setFromQuaternion(worldQuaternion, "XYZ");
-        const localDirection = new THREE.Vector3(0, 1, 0)
-            .applyQuaternion(object.quaternion)
+        const worldDirection = new THREE.Vector3(0, 1, 0)
+            .applyQuaternion(worldQuaternion)
             .normalize();
 
         updated.set(id, {
@@ -59,16 +60,21 @@ function syncNodeMetadata() {
                 THREE.MathUtils.radToDeg(euler.y),
                 THREE.MathUtils.radToDeg(euler.z)
             ],
-            direction: localDirection.toArray()
+            direction: worldDirection.toArray()
         });
     });
 
     if (!updated.size) return;
     const nextList = list.map(node => updated.get(node.id) || node);
     const snapshot = JSON.stringify(nextList);
-    if (snapshot === lastSnapshot) return;
+    if (!force && snapshot === lastSnapshot) return;
     lastSnapshot = snapshot;
-    updateRocketPart(scene, { attachmentNodes: nextList });
+
+    // Do not call updateRocketPart() here. That dispatches rocket-part-change
+    // and rebuilds node objects while the model is being transformed, which
+    // is what caused nodes to jump back when Rocket Part Mode was reopened.
+    raw.attachmentNodes = nextList;
+    raw.updatedAt = new Date().toISOString();
 }
 
 initNodeModelFollow();
