@@ -10,6 +10,7 @@ let canvas = null;
 let camera = null;
 let nodeRaycaster = new THREE.Raycaster();
 let pointer = new THREE.Vector2();
+let nodeTransformBusy = false;
 
 export function initAttachmentNodeEditor(scene, renderer, activeCamera, orbitControls = null) {
     sceneRef = scene;
@@ -24,10 +25,89 @@ export function initAttachmentNodeEditor(scene, renderer, activeCamera, orbitCon
     sceneRef.add(helperRoot);
 
     canvas?.addEventListener("click", onCanvasClick, true);
-    window.addEventListener("editor:rocket-part-mode", () => refreshAttachmentNodeHelpers());
-    window.addEventListener("editor:rocket-part-change", () => refreshAttachmentNodeHelpers());
+    window.addEventListener("editor:rocket-part-mode", () => {
+        ensureModelRootMetadata();
+        reparentHelperRoot();
+        refreshAttachmentNodeHelpers();
+    });
+    window.addEventListener("editor:rocket-part-change", () => {
+        ensureModelRootMetadata();
+        reparentHelperRoot();
+        refreshAttachmentNodeHelpers();
+    });
+    window.addEventListener("editor:rocket-node-transform", event => {
+        nodeTransformBusy = !!event.detail?.active;
+    });
+
     initNodeTransform(sceneRef, renderer, camera, orbitControls);
+    ensureModelRootMetadata();
+    reparentHelperRoot();
     refreshAttachmentNodeHelpers();
+}
+
+export function getModelRoot() {
+    if (!sceneRef) return null;
+    const meta = readRocketPart(sceneRef);
+    const uuid = meta?.coordinateSystem?.modelRootUUID;
+    if (uuid) {
+        const byUuid = sceneRef.getObjectByProperty("uuid", uuid);
+        if (byUuid && !byUuid.userData?.editorOnly) return byUuid;
+    }
+
+    const candidates = sceneRef.children.filter(object =>
+        object !== helperRoot &&
+        !object.userData?.editorOnly &&
+        object.userData?.editorObject
+    );
+
+    const group = candidates.find(object => object.isGroup);
+    return group || candidates[0] || null;
+}
+
+export function getModelLocalBounds() {
+    const root = getModelRoot();
+    if (!root) return null;
+
+    root.updateWorldMatrix(true, true);
+    const inverseRoot = root.matrixWorld.clone().invert();
+    const bounds = new THREE.Box3();
+    let found = false;
+
+    root.traverse(object => {
+        if (!object.isMesh || object.userData?.editorOnly || !object.geometry) return;
+        if (!object.geometry.boundingBox) object.geometry.computeBoundingBox();
+        if (!object.geometry.boundingBox) return;
+        const localMatrix = inverseRoot.clone().multiply(object.matrixWorld);
+        const meshBox = object.geometry.boundingBox.clone().applyMatrix4(localMatrix);
+        bounds.union(meshBox);
+        found = true;
+    });
+
+    return found && !bounds.isEmpty() ? bounds : null;
+}
+
+export function ensureModelRootMetadata() {
+    if (!sceneRef) return null;
+    const root = getModelRoot();
+    if (!root) return null;
+    const current = readRocketPart(sceneRef) || {};
+    const currentUUID = current.coordinateSystem?.modelRootUUID;
+    if (currentUUID !== root.uuid) {
+        updateRocketPart(sceneRef, {
+            coordinateSystem: { modelRootUUID: root.uuid }
+        });
+    }
+    return root;
+}
+
+function reparentHelperRoot() {
+    if (!helperRoot || !sceneRef) return;
+    const root = getModelRoot();
+    if (root) {
+        if (helperRoot.parent !== root) root.add(helperRoot);
+    } else if (helperRoot.parent !== sceneRef) {
+        sceneRef.add(helperRoot);
+    }
 }
 
 export function getAttachmentNodes() {
@@ -53,6 +133,7 @@ export function clearAttachmentNodeSelection() {
 
 export function addAttachmentNode(source = {}) {
     if (!sceneRef) return null;
+    ensureModelRootMetadata();
     const current = getAttachmentNodes();
     const node = createAttachmentNode({
         name: source.name || `Node ${current.length + 1}`,
@@ -70,6 +151,67 @@ export function addAttachmentNode(source = {}) {
     return node;
 }
 
+export function upsertPresetNode(preset) {
+    const existing = getAttachmentNodes().find(node => node.name === preset.name);
+    if (existing) {
+        updateAttachmentNode(existing.id, preset);
+        selectAttachmentNode(existing.id);
+        return getAttachmentNodes().find(node => node.id === existing.id) || null;
+    }
+    return addAttachmentNode(preset);
+}
+
+export function autoPlaceNode(preset) {
+    const bounds = getModelLocalBounds();
+    if (!bounds) return null;
+
+    const center = bounds.getCenter(new THREE.Vector3());
+    let position = center.clone();
+    let direction = new THREE.Vector3(0, 1, 0);
+    let type = "structural";
+    let compatibleCategories = ["custom"];
+
+    switch (preset) {
+        case "top":
+            position.set(center.x, bounds.max.y, center.z);
+            direction.set(0, 1, 0);
+            type = "structural";
+            compatibleCategories = ["tank", "decoupler", "nose-cone", "custom"];
+            break;
+        case "bottom":
+            position.set(center.x, bounds.min.y, center.z);
+            direction.set(0, -1, 0);
+            type = "structural";
+            compatibleCategories = ["tank", "engine", "decoupler", "custom"];
+            break;
+        case "engine":
+            position.set(center.x, bounds.min.y, center.z);
+            direction.set(0, -1, 0);
+            type = "engine";
+            compatibleCategories = ["engine", "custom"];
+            break;
+        case "dock":
+            position.set(center.x, center.y, bounds.max.z);
+            direction.set(0, 0, 1);
+            type = "dock";
+            compatibleCategories = ["dock", "custom"];
+            break;
+        default:
+            return null;
+    }
+
+    return upsertPresetNode({
+        name: preset === "top" ? "Top Mount" :
+            preset === "bottom" ? "Bottom Mount" :
+            preset === "engine" ? "Engine Mount" : "Docking Point",
+        type,
+        position: position.toArray(),
+        direction: direction.toArray(),
+        rotation: [0, 0, 0],
+        compatibleCategories
+    });
+}
+
 export function updateAttachmentNode(nodeId, patch = {}) {
     if (!sceneRef) return null;
     const current = getAttachmentNodes();
@@ -80,9 +222,18 @@ export function updateAttachmentNode(nodeId, patch = {}) {
     if (patch.name != null) node.name = String(patch.name).trim() || node.name;
     if (patch.type != null) node.type = String(patch.type);
     if (Array.isArray(patch.position)) node.position = normalizeVector(patch.position);
-    if (Array.isArray(patch.rotation)) node.rotation = normalizeVector(patch.rotation);
-    if (Array.isArray(patch.direction)) node.direction = normalizeDirection(patch.direction);
-    if (Array.isArray(patch.compatibleCategories)) node.compatibleCategories = [...new Set(patch.compatibleCategories.map(String))];
+
+    if (Array.isArray(patch.rotation)) {
+        node.rotation = normalizeVector(patch.rotation);
+        node.direction = directionFromRotation(node.rotation);
+    } else if (Array.isArray(patch.direction)) {
+        node.direction = normalizeDirection(patch.direction);
+        node.rotation = rotationFromDirection(node.direction);
+    }
+
+    if (Array.isArray(patch.compatibleCategories)) {
+        node.compatibleCategories = [...new Set(patch.compatibleCategories.map(String))];
+    }
 
     const next = current.slice();
     next[index] = node;
@@ -106,8 +257,12 @@ export function removeAttachmentNode(nodeId) {
 
 export function refreshAttachmentNodeHelpers() {
     if (!helperRoot || !sceneRef) return;
+    reparentHelperRoot();
     const nodes = getAttachmentNodes();
     const wanted = new Set(nodes.map(node => node.id));
+    const bounds = getModelLocalBounds();
+    const radius = bounds ? Math.max(bounds.getSize(new THREE.Vector3()).length() * 0.035, 0.04) : 0.08;
+    const arrowLength = radius * 5;
 
     for (const [id, helper] of helpers) {
         if (wanted.has(id)) continue;
@@ -123,7 +278,7 @@ export function refreshAttachmentNodeHelpers() {
             helpers.set(node.id, helper);
             helperRoot.add(helper);
         }
-        syncHelper(helper, node);
+        syncHelper(helper, node, radius, arrowLength);
     }
     updateHelperHighlight();
 }
@@ -134,7 +289,7 @@ function createNodeHelper(node) {
     group.userData = { editorOnly: true, attachmentNodeHelper: true, nodeId: node.id };
 
     const sphere = new THREE.Mesh(
-        new THREE.SphereGeometry(0.08, 16, 16),
+        new THREE.SphereGeometry(1, 16, 16),
         new THREE.MeshBasicMaterial({ color: 0x67d4ff, depthTest: false })
     );
     sphere.renderOrder = 999;
@@ -144,10 +299,10 @@ function createNodeHelper(node) {
     const arrow = new THREE.ArrowHelper(
         new THREE.Vector3(0, 1, 0),
         new THREE.Vector3(0, 0, 0),
-        0.42,
+        1,
         0x67d4ff,
-        0.12,
-        0.07
+        0.25,
+        0.16
     );
     arrow.line.renderOrder = 999;
     arrow.cone.renderOrder = 999;
@@ -156,27 +311,37 @@ function createNodeHelper(node) {
     group.add(arrow);
 
     const label = makeLabel(node.name || node.id);
-    label.position.set(0.12, 0.08, 0);
+    label.position.set(1.7, 1.25, 0);
     group.add(label);
     return group;
 }
 
-function syncHelper(helper, node) {
+function syncHelper(helper, node, radius = 0.08, arrowLength = 0.42) {
     helper.position.set(...node.position);
     helper.rotation.set(...node.rotation.map(value => THREE.MathUtils.degToRad(value)));
     helper.userData.nodeId = node.id;
-    helper.children[0]?.material && (helper.children[0].material.color.setHex(activeNodeId === node.id ? 0xffc857 : colorForType(node.type)));
+
+    const sphere = helper.children.find(child => child.isMesh);
+    if (sphere) {
+        sphere.scale.setScalar(radius);
+        sphere.material.color.setHex(activeNodeId === node.id ? 0xffc857 : colorForType(node.type));
+    }
 
     const arrow = helper.children.find(child => child.type === "ArrowHelper");
     if (arrow) {
         const dir = new THREE.Vector3(...node.direction).normalize();
         arrow.setDirection(dir);
-        arrow.setLength(0.42, 0.12, 0.07);
+        arrow.setLength(arrowLength, radius * 1.8, radius * 1.1);
         const color = activeNodeId === node.id ? 0xffc857 : colorForType(node.type);
         arrow.setColor(color);
     }
+
     const sprite = helper.children.find(child => child.userData?.attachmentNodeLabel);
-    if (sprite) updateLabel(sprite, node.name || node.id);
+    if (sprite) {
+        sprite.position.set(radius * 2.1, radius * 1.5, 0);
+        sprite.scale.set(radius * 11, radius * 2.75, 1);
+        updateLabel(sprite, node.name || node.id);
+    }
 }
 
 function updateHelperHighlight() {
@@ -187,7 +352,7 @@ function updateHelperHighlight() {
 }
 
 function onCanvasClick(event) {
-    if (!canvas || !camera || event.button !== 0) return;
+    if (!canvas || !camera || event.button !== 0 || nodeTransformBusy) return;
     const rect = canvas.getBoundingClientRect();
     pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
     pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
@@ -198,6 +363,27 @@ function onCanvasClick(event) {
     if (!hit) return;
     event.stopImmediatePropagation();
     selectAttachmentNode(hit.object.userData.nodeId);
+}
+
+function directionFromRotation(rotation) {
+    const euler = new THREE.Euler(
+        THREE.MathUtils.degToRad(rotation[0]),
+        THREE.MathUtils.degToRad(rotation[1]),
+        THREE.MathUtils.degToRad(rotation[2]),
+        "XYZ"
+    );
+    return new THREE.Vector3(0, 1, 0).applyEuler(euler).normalize().toArray();
+}
+
+function rotationFromDirection(direction) {
+    const dir = new THREE.Vector3(...normalizeDirection(direction));
+    const quaternion = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir);
+    const euler = new THREE.Euler().setFromQuaternion(quaternion, "XYZ");
+    return [
+        THREE.MathUtils.radToDeg(euler.x),
+        THREE.MathUtils.radToDeg(euler.y),
+        THREE.MathUtils.radToDeg(euler.z)
+    ];
 }
 
 function makeLabel(text) {
