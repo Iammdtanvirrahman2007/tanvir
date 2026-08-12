@@ -20,6 +20,8 @@ import { initInspector, updateInspector } from "./ui/inspector.js";
 import { initSetFocusControl } from "./ui/setFocusControl.js";
 import { initPivotControl } from "./ui/pivotControl.js";
 import { initRocketPartPanel, toggleRocketPartMode } from "./ui/rocketPartPanel.js";
+import { initAttachmentNodePanel } from "./ui/attachmentNodePanel.js";
+import { initAttachmentNodeEditor } from "./rocket/attachmentNodes.js";
 import { initMaterialLibrary } from "./core/materialLibrary.js";
 import { initMaterialLibraryPanel } from "./ui/materialLibraryPanel.js";
 import { createObject } from "./objects/factory.js";
@@ -29,8 +31,37 @@ const state = { transformMode: "translate", transformSpace: "world", lastStatus:
 boot();
 
 function boot() {
-    installAdaptiveStyles(); initScene(); setupTransform(camera, renderer, scene, controls); setupSelection(renderer, camera, scene); initInspector(); initSetFocusControl(); initPivotControl(); initRocketPartPanel(scene); initNumericTransform(); initMaterialLibrary(); initHierarchy(scene); setupDelete(scene); setupDuplicate(scene); setupCopyPaste(scene); setupImporter(scene); setupExporter(scene); setupUpload(scene);
-    const defaultCube = createDefaultCube(); addToHierarchy(defaultCube); updateInspector(null); bindUI(); bindEditorEvents(); bindKeyboard(); bindResponsiveLayer(); requestAnimationFrame(() => initMaterialLibraryPanel()); updateObjectCount(); updateHistoryButtons(); syncTransformSpaceUI(); setStatus("Ready");
+    installAdaptiveStyles();
+    initScene();
+    setupTransform(camera, renderer, scene, controls);
+    setupSelection(renderer, camera, scene);
+    initInspector();
+    initSetFocusControl();
+    initPivotControl();
+    initRocketPartPanel(scene);
+    initAttachmentNodeEditor(scene, renderer, camera);
+    initAttachmentNodePanel();
+    initNumericTransform();
+    initMaterialLibrary();
+    initHierarchy(scene);
+    setupDelete(scene);
+    setupDuplicate(scene);
+    setupCopyPaste(scene);
+    setupImporter(scene);
+    setupExporter(scene);
+    setupUpload(scene);
+    const defaultCube = createDefaultCube();
+    addToHierarchy(defaultCube);
+    updateInspector(null);
+    bindUI();
+    bindEditorEvents();
+    bindKeyboard();
+    bindResponsiveLayer();
+    requestAnimationFrame(() => initMaterialLibraryPanel());
+    updateObjectCount();
+    updateHistoryButtons();
+    syncTransformSpaceUI();
+    setStatus("Ready");
 }
 
 function installAdaptiveStyles() {
