@@ -75,22 +75,17 @@ export function isNodeEditMode() { return nodeEditMode; }
 export function setNodeEditMode(enabled) {
     const next = !!enabled;
     if (next === nodeEditMode) return nodeEditMode;
-
     nodeEditMode = next;
     window.__modelForgeNodeEditMode = nodeEditMode;
-
     activeNodeId = null;
     syncing = true;
     try { clearSelection(); } finally { syncing = false; }
-
     highlightNodes();
     window.dispatchEvent(new CustomEvent("editor:attachment-node-mode", { detail: nodeEditMode }));
     return nodeEditMode;
 }
 
-export function toggleNodeEditMode() {
-    return setNodeEditMode(!nodeEditMode);
-}
+export function toggleNodeEditMode() { return setNodeEditMode(!nodeEditMode); }
 
 export function getModelRoot() {
     if (!sceneRef) return null;
@@ -140,11 +135,11 @@ export function addAttachmentNode(source = {}) {
     const current = getAttachmentNodes();
     const node = createAttachmentNode({
         name: source.name || `Node ${current.length + 1}`,
-        type: "structural",
-        position: [0, 0, 0],
-        rotation: [0, 0, 0],
-        direction: [0, 1, 0],
-        compatibleCategories: []
+        type: source.type || "structural",
+        position: source.position || [0, 0, 0],
+        rotation: source.rotation || [0, 0, 0],
+        direction: source.direction || [0, 1, 0],
+        compatibleCategories: source.compatibleCategories || []
     });
     updateRocketPart(sceneRef, { attachmentNodes: [...current, node] });
     createNodeObject(node);
@@ -164,6 +159,7 @@ export function updateAttachmentNode(nodeId, patch = {}) {
     if (patch.name != null) node.name = String(patch.name).trim() || node.name;
     if (Array.isArray(patch.position)) node.position = normalizeVector(patch.position);
     if (Array.isArray(patch.rotation)) node.rotation = normalizeVector(patch.rotation);
+    if (Array.isArray(patch.direction)) node.direction = normalizeDirection(patch.direction);
     const next = current.slice(); next[index] = node;
     updateRocketPart(sceneRef, { attachmentNodes: next });
     applyMetadataToObject(node);
@@ -191,16 +187,10 @@ export function refreshAttachmentNodeHelpers() { rebuildNodeObjects(); }
 
 function createNodeObject(node) {
     if (!modelRoot) return null;
-
     const object = new THREE.Mesh(
         new THREE.SphereGeometry(0.14, 24, 16),
-        new THREE.MeshBasicMaterial({
-            color: 0x67d4ff,
-            depthTest: false,
-            depthWrite: false
-        })
+        new THREE.MeshBasicMaterial({ color: 0x67d4ff, depthTest: false, depthWrite: false })
     );
-
     object.name = node.name || `Node ${node.id}`;
     object.userData = {
         selectable: true,
@@ -213,25 +203,12 @@ function createNodeObject(node) {
     object.renderOrder = 1200;
     modelRoot.add(object);
 
-    // Direction arrow: local +Y is the canonical node direction.
-    // The arrow is a child of the real node object, so normal node rotation
-    // automatically rotates the arrow with it. It is not selectable by itself;
-    // selection resolves to the parent node sphere.
-    const arrow = new THREE.ArrowHelper(
-        new THREE.Vector3(0, 1, 0),
-        new THREE.Vector3(0, 0, 0),
-        0.55,
-        0x67d4ff,
-        0.14,
-        0.075
-    );
+    const arrow = new THREE.ArrowHelper(new THREE.Vector3(0, 1, 0), new THREE.Vector3(0, 0, 0), 0.55, 0x67d4ff, 0.14, 0.075);
     arrow.name = `${object.name} Direction`;
-    arrow.userData = {
-        attachmentNodeArrow: true,
-        attachmentNodeId: node.id,
-        selectable: false
-    };
+    arrow.userData = { attachmentNodeArrow: true, attachmentNodeId: node.id, selectable: false, editorOnly: false };
     arrow.renderOrder = 1201;
+    arrow.line?.material && (arrow.line.material.depthTest = false);
+    arrow.cone?.material && (arrow.cone.material.depthTest = false);
     object.add(arrow);
 
     nodeObjects.set(node.id, object);
@@ -244,14 +221,12 @@ function rebuildNodeObjects() {
     if (!modelRoot) return;
     const nodes = getAttachmentNodes();
     const wanted = new Set(nodes.map(n => n.id));
-
     for (const [id, object] of nodeObjects) {
         if (wanted.has(id)) continue;
         object.parent?.remove(object);
         disposeNodeObject(object);
         nodeObjects.delete(id);
     }
-
     for (const node of nodes) {
         if (!nodeObjects.has(node.id)) createNodeObject(node);
         else applyMetadataToObject(node);
@@ -262,10 +237,15 @@ function rebuildNodeObjects() {
 function applyMetadataToObject(node) {
     const object = nodeObjects.get(node.id);
     if (!object || syncing) return;
+    const origin = getReferenceOrigin();
     syncing = true;
     try {
         object.name = node.name || `Node ${node.id}`;
-        object.position.set(...normalizeVector(node.position));
+        object.position.set(
+            Number(node.position?.[0] || 0) + origin[0],
+            Number(node.position?.[1] || 0) + origin[1],
+            Number(node.position?.[2] || 0) + origin[2]
+        );
         object.rotation.set(
             THREE.MathUtils.degToRad(Number(node.rotation?.[0] || 0)),
             THREE.MathUtils.degToRad(Number(node.rotation?.[1] || 0)),
@@ -276,43 +256,63 @@ function applyMetadataToObject(node) {
     } finally { syncing = false; }
 }
 
-function updateNodeArrowVisual(object, node) {
-    const arrow = object.children.find(child => child.userData?.attachmentNodeArrow);
-    if (!arrow) return;
-
-    const active = nodeEditMode && object.userData?.attachmentNodeId === activeNodeId;
-    const color = active ? 0xffc857 : 0x67d4ff;
-    arrow.line?.material?.color?.setHex(color);
-    arrow.cone?.material?.color?.setHex(color);
-}
-
 function syncNodeFromObject(object) {
     if (!nodeEditMode) return;
     const nodeId = object.userData?.attachmentNodeId;
     const current = getAttachmentNodes();
     const index = current.findIndex(n => n.id === nodeId);
     if (index < 0) return;
-
+    const origin = getReferenceOrigin();
+    const localPosition = [
+        object.position.x - origin[0],
+        object.position.y - origin[1],
+        object.position.z - origin[2]
+    ];
     const euler = new THREE.Euler().setFromQuaternion(object.quaternion, "XYZ");
     const next = current.slice();
     next[index] = {
         ...current[index],
         name: object.name,
-        position: object.position.toArray(),
+        position: localPosition,
         rotation: [
             THREE.MathUtils.radToDeg(euler.x),
             THREE.MathUtils.radToDeg(euler.y),
             THREE.MathUtils.radToDeg(euler.z)
-        ]
+        ],
+        direction: directionFromQuaternion(object.quaternion)
     };
-
     syncing = true;
     try { updateRocketPart(sceneRef, { attachmentNodes: next }); }
     finally { syncing = false; }
-
     activeNodeId = nodeId;
     updateNodeArrowVisual(object, next[index]);
     dispatchNodeChange(next[index], true);
+}
+
+function updateNodeArrowVisual(object, node) {
+    const arrow = object.children.find(child => child.userData?.attachmentNodeArrow);
+    if (!arrow) return;
+    const active = nodeEditMode && object.userData?.attachmentNodeId === activeNodeId;
+    const color = active ? 0xffc857 : 0x67d4ff;
+    arrow.line?.material?.color?.setHex(color);
+    arrow.cone?.material?.color?.setHex(color);
+    const direction = normalizeDirection(node.direction || [0, 1, 0]);
+    arrow.setDirection(direction);
+}
+
+function getReferenceOrigin() {
+    const origin = readRocketPart(sceneRef)?.coordinateSystem?.origin;
+    return normalizeVector(origin);
+}
+
+function directionFromQuaternion(quaternion) {
+    return new THREE.Vector3(0, 1, 0).applyQuaternion(quaternion).normalize().toArray();
+}
+
+function normalizeDirection(value) {
+    const [x, y, z] = normalizeVector(value);
+    const length = Math.hypot(x, y, z);
+    return length > 1e-8 ? [x / length, y / length, z / length] : [0, 1, 0];
 }
 
 function highlightNodes() {
@@ -324,15 +324,10 @@ function highlightNodes() {
 }
 
 function dispatchNodeChange(node, transforming = false) {
-    window.dispatchEvent(new CustomEvent("editor:rocket-node-change", {
-        detail: { node, transforming }
-    }));
+    window.dispatchEvent(new CustomEvent("editor:rocket-node-change", { detail: { node, transforming } }));
 }
 
-function normalizeVector(value) {
-    return [0,1,2].map(i => Number.isFinite(Number(value?.[i])) ? Number(value[i]) : 0);
-}
-
+function normalizeVector(value) { return [0,1,2].map(i => Number.isFinite(Number(value?.[i])) ? Number(value[i]) : 0); }
 function disposeNodeObject(object) {
     if (!object) return;
     object.traverse(child => {
