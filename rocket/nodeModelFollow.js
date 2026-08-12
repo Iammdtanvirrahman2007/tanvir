@@ -12,7 +12,6 @@ export function initNodeModelFollow() {
     resetBaseline();
     window.addEventListener("editor:rocket-part-mode", resetBaseline);
     window.addEventListener("editor:project-opened", resetBaseline);
-    window.addEventListener("editor:selection-change", () => requestAnimationFrame(resetBaseline));
     requestAnimationFrame(tick);
 }
 
@@ -46,10 +45,9 @@ function moveNodesByModelDelta(delta) {
     applying = true;
     try {
         for (const nodeObject of nodes) {
-            if (!nodeObject.visible) continue;
-            nodeObject.updateMatrix();
-            nodeObject.matrix.premultiply(delta);
-            nodeObject.matrix.decompose(nodeObject.position, nodeObject.quaternion, nodeObject.scale);
+            nodeObject.updateMatrixWorld(true);
+            const nextWorld = delta.clone().multiply(nodeObject.matrixWorld.clone());
+            nextWorld.decompose(nodeObject.position, nodeObject.quaternion, nodeObject.scale);
             nodeObject.updateMatrixWorld(true);
             syncNodeMetadata(nodeObject);
         }
@@ -81,10 +79,6 @@ function syncNodeMetadata(nodeObject) {
     ];
     entry.direction = direction.toArray();
     meta.updatedAt = new Date().toISOString();
-
-    window.dispatchEvent(new CustomEvent("editor:rocket-node-change", {
-        detail: { node: entry, transforming: true, source: "model-follow" }
-    }));
 }
 
 function getNodeObjects() {
@@ -102,6 +96,7 @@ function getModelRoot() {
         const found = scene.getObjectByProperty("uuid", uuid);
         if (found && !found.userData?.attachmentNode && !found.userData?.editorOnly) return found;
     }
+
     return scene.children.find(object =>
         object.userData?.editorObject &&
         !object.userData?.attachmentNode &&
