@@ -19,6 +19,7 @@ import { addToHierarchy, initHierarchy, rebuildHierarchy } from "./ui/hierarchy.
 import { initInspector, updateInspector } from "./ui/inspector.js";
 import { initSetFocusControl } from "./ui/setFocusControl.js";
 import { initPivotControl } from "./ui/pivotControl.js";
+import { initRocketPartPanel, toggleRocketPartMode } from "./ui/rocketPartPanel.js";
 import { initMaterialLibrary } from "./core/materialLibrary.js";
 import { initMaterialLibraryPanel } from "./ui/materialLibraryPanel.js";
 import { createObject } from "./objects/factory.js";
@@ -28,7 +29,7 @@ const state = { transformMode: "translate", transformSpace: "world", lastStatus:
 boot();
 
 function boot() {
-    installAdaptiveStyles(); initScene(); setupTransform(camera, renderer, scene, controls); setupSelection(renderer, camera, scene); initInspector(); initSetFocusControl(); initPivotControl(); initNumericTransform(); initMaterialLibrary(); initHierarchy(scene); setupDelete(scene); setupDuplicate(scene); setupCopyPaste(scene); setupImporter(scene); setupExporter(scene); setupUpload(scene);
+    installAdaptiveStyles(); initScene(); setupTransform(camera, renderer, scene, controls); setupSelection(renderer, camera, scene); initInspector(); initSetFocusControl(); initPivotControl(); initRocketPartPanel(scene); initNumericTransform(); initMaterialLibrary(); initHierarchy(scene); setupDelete(scene); setupDuplicate(scene); setupCopyPaste(scene); setupImporter(scene); setupExporter(scene); setupUpload(scene);
     const defaultCube = createDefaultCube(); addToHierarchy(defaultCube); updateInspector(null); bindUI(); bindEditorEvents(); bindKeyboard(); bindResponsiveLayer(); requestAnimationFrame(() => initMaterialLibraryPanel()); updateObjectCount(); updateHistoryButtons(); syncTransformSpaceUI(); setStatus("Ready");
 }
 
@@ -46,6 +47,7 @@ function bindUI(){
     document.getElementById("undoBtn")?.addEventListener("click",()=>{if(undo())setStatus("Undo")}); document.getElementById("redoBtn")?.addEventListener("click",()=>{if(redo())setStatus("Redo")});
     document.getElementById("saveBtn")?.addEventListener("click",()=>{chooseSaveFormat(scene);});
     document.getElementById("loadBtn")?.addEventListener("click",()=>{loadScene(scene);setStatus("Choose a project or supported 3D file")});
+    document.getElementById("rocketPartBtn")?.addEventListener("click",()=>{const enabled=toggleRocketPartMode();setStatus(enabled?"Rocket Part Mode":"3D Modeling Mode")});
     document.getElementById("gridBtn")?.addEventListener("click",()=>{grid.visible=!grid.visible;setStatus(grid.visible?"Grid enabled":"Grid hidden")}); document.getElementById("frameBtn")?.addEventListener("click",frameSelected); document.getElementById("cameraResetBtn")?.addEventListener("click",()=>{resetCamera();setStatus("View reset")});
     document.getElementById("selectBtn")?.addEventListener("click",()=>activateTool("select")); document.getElementById("moveBtn")?.addEventListener("click",()=>activateTool("translate")); document.getElementById("rotateBtn")?.addEventListener("click",()=>activateTool("rotate")); document.getElementById("scaleBtn")?.addEventListener("click",()=>activateTool("scale"));
     document.getElementById("snapBtn")?.addEventListener("click",()=>{const enabled=toggleSnap(),button=document.getElementById("snapBtn");if(button){button.textContent=enabled?"Snap On":"Snap Off";button.classList.toggle("snap-on",enabled)}});
