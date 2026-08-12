@@ -8,6 +8,7 @@ let initialized = false;
 let syncing = false;
 let nodeTransformActive = false;
 let nodeEditMode = false;
+let nodesVisible = true;
 const nodeObjects = new Map();
 
 export function initAttachmentNodeEditor(scene) {
@@ -15,12 +16,15 @@ export function initAttachmentNodeEditor(scene) {
     if (!sceneRef || initialized) return;
     initialized = true;
     window.__modelForgeNodeEditMode = false;
+    window.__modelForgeNodesVisible = true;
     rebuildNodeObjects();
+    installNodeVisibilityButton();
+    syncNodeVisibilityButton();
 
     window.addEventListener("editor:rocket-part-mode", event => {
         if (event.detail) {
             rebuildNodeObjects();
-            setNodeObjectsVisible(true);
+            setNodeObjectsVisible(nodesVisible);
         } else {
             setNodeEditMode(false);
             activeNodeId = null;
@@ -71,6 +75,23 @@ export function initAttachmentNodeEditor(scene) {
 }
 
 export function isNodeEditMode() { return nodeEditMode; }
+export function areNodesVisible() { return nodesVisible; }
+
+export function setNodesVisible(visible) {
+    nodesVisible = !!visible;
+    window.__modelForgeNodesVisible = nodesVisible;
+    setNodeObjectsVisible(nodesVisible);
+    if (!nodesVisible) {
+        activeNodeId = null;
+        syncing = true;
+        try { clearSelection(); } finally { syncing = false; }
+    }
+    syncNodeVisibilityButton();
+    window.dispatchEvent(new CustomEvent("editor:node-visibility", { detail: nodesVisible }));
+    return nodesVisible;
+}
+
+export function toggleNodesVisible() { return setNodesVisible(!nodesVisible); }
 
 export function setNodeEditMode(enabled) {
     const next = !!enabled;
@@ -80,7 +101,7 @@ export function setNodeEditMode(enabled) {
     activeNodeId = null;
     syncing = true;
     try { clearSelection(); } finally { syncing = false; }
-    setNodeObjectsVisible(true);
+    setNodeObjectsVisible(nodesVisible);
     highlightNodes();
     window.dispatchEvent(new CustomEvent("editor:attachment-node-mode", { detail: nodeEditMode }));
     return nodeEditMode;
@@ -92,7 +113,7 @@ export function getAttachmentNodes() { return readRocketPart(sceneRef)?.attachme
 export function getActiveAttachmentNodeId() { return activeNodeId; }
 
 export function selectAttachmentNode(nodeId) {
-    if (!nodeEditMode) return null;
+    if (!nodeEditMode || !nodesVisible) return null;
     const object = nodeObjects.get(nodeId);
     if (!object) return null;
     activeNodeId = nodeId;
@@ -124,7 +145,7 @@ export function addAttachmentNode(source = {}) {
 
     updateRocketPart(sceneRef, { attachmentNodes: [...current, node] });
     createNodeObject(node);
-    setNodeObjectsVisible(true);
+    setNodeObjectsVisible(nodesVisible);
     activeNodeId = node.id;
     if (!nodeEditMode) setNodeEditMode(true);
     highlightNodes();
@@ -187,7 +208,7 @@ function createNodeObject(node) {
     sceneRef.add(object);
 
     const arrow = new THREE.ArrowHelper(
-        new THREE.Vector3(0, 1, 0),
+        normalizeDirection(node.direction || [0, 1, 0]) && new THREE.Vector3(0, 1, 0),
         new THREE.Vector3(0, 0, 0),
         0.55,
         0x67d4ff,
@@ -199,11 +220,11 @@ function createNodeObject(node) {
         attachmentNodeArrow: true,
         attachmentNodeId: node.id,
         selectable: false,
-        editorOnly: false
+        editorOnly: true
     };
     arrow.renderOrder = 1201;
-    arrow.line?.material && (arrow.line.material.depthTest = false);
-    arrow.cone?.material && (arrow.cone.material.depthTest = false);
+    arrow.line?.material && (arrow.line.material.depthTest = false, arrow.line.material.depthWrite = false);
+    arrow.cone?.material && (arrow.cone.material.depthTest = false, arrow.cone.material.depthWrite = false);
     object.add(arrow);
 
     nodeObjects.set(node.id, object);
@@ -227,6 +248,7 @@ function rebuildNodeObjects() {
         if (!nodeObjects.has(node.id)) createNodeObject(node);
         else applyMetadataToObject(node);
     }
+    setNodeObjectsVisible(nodesVisible);
     highlightNodes();
 }
 
@@ -239,7 +261,7 @@ function clearNodeObjects() {
 }
 
 function setNodeObjectsVisible(visible) {
-    for (const object of nodeObjects.values()) object.visible = visible;
+    for (const object of nodeObjects.values()) object.visible = !!visible;
 }
 
 function applyMetadataToObject(node) {
@@ -323,6 +345,26 @@ function highlightNodes() {
 
 function dispatchNodeChange(node, transforming = false) {
     window.dispatchEvent(new CustomEvent("editor:rocket-node-change", { detail: { node, transforming } }));
+}
+
+function installNodeVisibilityButton() {
+    const host = document.querySelector(".viewport-top-right");
+    const grid = document.getElementById("gridBtn");
+    if (!host || !grid || document.getElementById("nodeVisibilityBtn")) return;
+    const button = document.createElement("button");
+    button.id = "nodeVisibilityBtn";
+    button.className = "viewport-btn";
+    button.type = "button";
+    button.title = "Show/Hide attachment nodes";
+    button.addEventListener("click", toggleNodesVisible);
+    grid.insertAdjacentElement("afterend", button);
+}
+
+function syncNodeVisibilityButton() {
+    const button = document.getElementById("nodeVisibilityBtn");
+    if (!button) return;
+    button.textContent = nodesVisible ? "Nodes On" : "Nodes Off";
+    button.classList.toggle("active", nodesVisible);
 }
 
 function normalizeVector(value) {
