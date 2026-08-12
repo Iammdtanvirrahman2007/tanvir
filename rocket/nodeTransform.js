@@ -14,7 +14,6 @@ let targetHelper = null;
 export function initNodeTransform(scene, renderer, camera, orbit = null) {
     if (controls || !scene || !renderer || !camera) return;
     sceneRef = scene;
-    // main.js currently does not pass OrbitControls, so fall back to the shared scene instance.
     orbitControls = orbit || defaultOrbitControls || null;
     controls = new TransformControls(camera, renderer.domElement);
     controls.setMode(mode);
@@ -27,7 +26,7 @@ export function initNodeTransform(scene, renderer, camera, orbit = null) {
     scene.add(controls.getHelper());
 
     controls.addEventListener("dragging-changed", event => {
-        // Prevent camera orbit from interpreting the same pointer drag as a scene move.
+        // Keep the camera completely isolated from node editing.
         if (orbitControls) orbitControls.enabled = !event.value;
         window.dispatchEvent(new CustomEvent("editor:rocket-node-transform", {
             detail: { active: !!event.value, mode, nodeId: getActiveAttachmentNodeId() }
@@ -39,6 +38,10 @@ export function initNodeTransform(scene, renderer, camera, orbit = null) {
 
     window.addEventListener("editor:attachment-node-selected", event => {
         attachNode(event.detail?.id || null);
+    });
+    window.addEventListener("editor:selection-change", () => {
+        // Selecting a normal scene object exits node-edit mode cleanly.
+        if (active) detachNode();
     });
     window.addEventListener("editor:rocket-part-mode", event => {
         if (!event.detail) detachNode();
@@ -64,7 +67,7 @@ function attachNode(nodeId) {
     const helper = sceneRef.getObjectByName(`Node_${node.id}`);
     if (!helper) return detachNode();
 
-    // The normal object gizmo and node gizmo must never be active together.
+    // Never allow the normal object gizmo to run together with the node gizmo.
     setTransformEnabled(false);
 
     targetHelper = helper;
@@ -74,7 +77,10 @@ function attachNode(nodeId) {
     controls.attach(helper);
     controls.enabled = true;
     controls.visible = true;
-    if (orbitControls) orbitControls.enabled = true;
+
+    // While a node is actively selected, camera orbit is disabled so the
+    // same pointer gesture cannot rotate/pan the whole scene underneath it.
+    if (orbitControls) orbitControls.enabled = false;
     updateTransformLabel();
 }
 
