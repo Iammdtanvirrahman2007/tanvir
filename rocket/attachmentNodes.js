@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { createAttachmentNode, readRocketPart, updateRocketPart } from "./rocketPart.js";
+import { initNodeTransform } from "./nodeTransform.js";
 
 let sceneRef = null;
 let helperRoot = null;
@@ -10,7 +11,7 @@ let camera = null;
 let nodeRaycaster = new THREE.Raycaster();
 let pointer = new THREE.Vector2();
 
-export function initAttachmentNodeEditor(scene, renderer, activeCamera) {
+export function initAttachmentNodeEditor(scene, renderer, activeCamera, orbitControls = null) {
     sceneRef = scene;
     canvas = renderer?.domElement || null;
     camera = activeCamera || null;
@@ -25,6 +26,7 @@ export function initAttachmentNodeEditor(scene, renderer, activeCamera) {
     canvas?.addEventListener("click", onCanvasClick, true);
     window.addEventListener("editor:rocket-part-mode", () => refreshAttachmentNodeHelpers());
     window.addEventListener("editor:rocket-part-change", () => refreshAttachmentNodeHelpers());
+    initNodeTransform(sceneRef, renderer, camera, orbitControls);
     refreshAttachmentNodeHelpers();
 }
 
