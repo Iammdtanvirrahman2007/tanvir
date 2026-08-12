@@ -18,10 +18,7 @@
         })
         .catch(error => console.warn('ModelForge PWA registration failed:', error));
     }
-    import('./rocket/referenceGuidesUI.js?v=20260812-reference-1')
-      .then(({ initReferenceGuidesUI }) => initReferenceGuidesUI())
-      .catch(error => console.warn('ModelForge reference guides failed:', error));
-    import('./rocket/nodeModelFollow.js?v=20260812-node-follow-1')
+    import('./rocket/nodeModelFollow.js?v=20260812-node-follow-2')
       .catch(error => console.warn('ModelForge node follow failed:', error));
   };
 
