@@ -33,6 +33,33 @@
         requestAnimationFrame(() => requestAnimationFrame(start));
       })
       .catch(error => console.warn('ModelForge node vector renderer load failed:', error));
+
+    Promise.all([
+      import('./core/aiAssistant.js?v=20260817-ai-1'),
+      import('./core/selection.js'),
+      import('./core/objectManager.js'),
+      import('./core/transform.js?v=20260812-transform-axis-fix-4')
+    ]).then(([ai, selection, objectManager, transform]) => {
+      const toTransform = object => object ? {
+        name: object.name,
+        type: object.type,
+        position: object.position?.toArray?.() ?? null,
+        rotation: object.rotation?.toArray?.() ?? null,
+        scale: object.scale?.toArray?.() ?? null
+      } : null;
+      ai.initAIAssistant({
+        getSceneContext: () => {
+          const objects = objectManager.getObjects();
+          const selected = selection.getSelected();
+          return {
+            transformSpace: transform.getTransformSpace(),
+            selected: toTransform(selected),
+            objectCount: objects.length,
+            objects: objects.map(toTransform)
+          };
+        }
+      });
+    }).catch(error => console.warn('ModelForge AI assistant load failed:', error));
   };
 
   if (document.readyState === 'loading') {
