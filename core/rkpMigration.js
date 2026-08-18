@@ -4,10 +4,13 @@ export const LEGACY_RKP_VERSION = 5;
 
 export function migrateToRKPv2(input) {
   if (!input || typeof input !== "object" || Array.isArray(input)) throw new Error("Invalid project payload.");
-  if (input.format === "RKP" && input.version === 2 && input.schema) return structuredCloneSafe(input);
-  if (input.format === "ModelForgeProject") return migrateLegacyProject(input);
-  if (Array.isArray(input.objects)) return migrateLegacyProject({ ...input, objects: input.objects });
-  throw new Error("Unsupported project format. Expected RKP v2 or a legacy ModelForge project.");
+  let asset;
+  if (input.format === "RKP" && input.version === 2 && input.schema) asset = structuredCloneSafe(input);
+  else if (input.format === "ModelForgeProject") asset = migrateLegacyProject(input);
+  else if (Array.isArray(input.objects)) asset = migrateLegacyProject({ ...input, objects: input.objects });
+  else throw new Error("Unsupported project format. Expected RKP v2 or a legacy ModelForge project.");
+  rememberLastRKP(asset);
+  return asset;
 }
 
 export function migrateLegacyProject(project) {
@@ -28,6 +31,7 @@ export function migrateLegacyProject(project) {
     scene: { objects },
     objects,
     materials: collectMaterials(objects),
+    voxel: project.voxel || null,
     customProperties: { legacyVersion: project.version ?? LEGACY_RKP_VERSION }
   });
 }
@@ -60,6 +64,10 @@ function collectMaterials(objects) {
   });
   visit(objects);
   return [...map.values()];
+}
+
+function rememberLastRKP(asset) {
+  if (typeof window !== "undefined") window.__modelForgeLastRKPAsset = asset;
 }
 
 function structuredCloneSafe(value) {
