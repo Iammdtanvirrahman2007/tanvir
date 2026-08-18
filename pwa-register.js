@@ -29,40 +29,39 @@
       })
       .catch(error => console.warn('ModelForge node vector renderer load failed:', error));
 
-    import('./core/voxel/editor.js?v=20260818-voxel-ui-1')
+    import('./core/voxel/editor.js?v=20260818-voxel-ui-2')
       .then(async ({ initVoxelEditor }) => {
         const { scene, renderer, camera, controls } = await import('./core/scene.js?v=20260811-runtime-fix');
         const start = () => {
           if (window.__modelForgeVoxelEditor) return;
-          try {
-            window.__modelForgeVoxelEditor = initVoxelEditor({ scene, renderer, camera, controls });
-          } catch (error) {
-            console.warn('ModelForge voxel editor failed:', error);
-          }
+          try { window.__modelForgeVoxelEditor = initVoxelEditor({ scene, renderer, camera, controls }); }
+          catch (error) { console.warn('ModelForge voxel editor failed:', error); }
         };
         requestAnimationFrame(() => requestAnimationFrame(start));
-        requestAnimationFrame(() => requestAnimationFrame(() => import('./core/voxel/voxelTransformsUI.js?v=20260818-vtx-1').then(module => module.initVoxelTransformUI()).catch(error => console.warn('ModelForge voxel transform UI failed:', error))));
+        requestAnimationFrame(() => requestAnimationFrame(() => import('./core/voxel/voxelTransformsUI.js?v=20260818-vtx-2').then(module => module.initVoxelTransformUI()).catch(error => console.warn('ModelForge voxel transform UI failed:', error))));
       })
       .catch(error => console.warn('ModelForge voxel editor load failed:', error));
 
-    import('./core/voxel/previewController.js?v=20260818-voxel-opt-1')
+    import('./core/voxel/previewController.js?v=20260818-greedy-1')
       .then(module => {
-        try {
-          window.__modelForgeVoxelPreview = module.initVoxelPreviewController();
-        } catch (error) {
-          console.warn('ModelForge voxel preview controller failed:', error);
-        }
+        try { window.__modelForgeVoxelPreview = module.initVoxelPreviewController(); }
+        catch (error) { console.warn('ModelForge voxel preview controller failed:', error); }
       })
       .catch(error => console.warn('ModelForge voxel preview controller load failed:', error));
+
+    import('./core/voxel/voxel2Controller.js?v=20260818-v2-1')
+      .then(module => {
+        try { module.initVoxel2Controller(); }
+        catch (error) { console.warn('ModelForge voxel 2.0 controller failed:', error); }
+      })
+      .catch(error => console.warn('ModelForge voxel 2.0 controller load failed:', error));
 
     import('./core/productionAssetUI.js?v=20260818-production-asset-2')
       .then(async module => {
         try {
           const { scene } = await import('./core/scene.js?v=20260811-runtime-fix');
           module.initProductionAssetUI(scene);
-        } catch (error) {
-          console.warn('ModelForge production asset UI failed:', error);
-        }
+        } catch (error) { console.warn('ModelForge production asset UI failed:', error); }
       })
       .catch(error => console.warn('ModelForge production asset UI load failed:', error));
 
@@ -94,9 +93,6 @@
     }).catch(error => console.warn('ModelForge AI assistant load failed:', error));
   };
 
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', register, { once: true });
-  } else {
-    register();
-  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', register, { once: true });
+  else register();
 })();
