@@ -55,6 +55,17 @@
       })
       .catch(error => console.warn('ModelForge voxel preview controller load failed:', error));
 
+    import('./core/productionAssetUI.js?v=20260818-production-asset-1')
+      .then(async module => {
+        try {
+          const { scene } = await import('./core/scene.js?v=20260811-runtime-fix');
+          module.initProductionAssetUI(scene);
+        } catch (error) {
+          console.warn('ModelForge production asset UI failed:', error);
+        }
+      })
+      .catch(error => console.warn('ModelForge production asset UI load failed:', error));
+
     Promise.all([
       import('./core/aiAssistant.js?v=20260817-ai-1'),
       import('./core/selection.js'),
