@@ -25,6 +25,10 @@ MF-023 Automated Testing: 🟡 PARTIAL
 - RKP v2 voxel payload persistence on save
 - RKP migration retains the loaded asset for restoration
 - Browser bridge restores saved voxel data into the voxel workspace after project open
+- Mirror X/Y/Z transforms
+- Rotate Y 90° transform
+- X-axis symmetry transform
+- Layer listing and layer visibility controls
 - Node.js test runner via `npm test`
 
 ## Verification
@@ -40,11 +44,13 @@ Voxel core and operation tests cover:
 - connected-region flood fill
 - copy/paste with block properties
 - RKP v2 voxel payload presence/absence contract
+- mirror transform
+- rotate Y transform
+- symmetry transform
+- Y-layer grouping
 
 ## Still missing for MF-003
 
-- mirror/rotate/symmetry tools
-- layer visibility
 - voxel grid snapping controls
 - optimized chunked voxel mesh generation/greedy meshing
 - material/texture registry integration
