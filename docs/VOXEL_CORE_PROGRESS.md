@@ -15,26 +15,35 @@ MF-023 Automated Testing: 🟡 PARTIAL
 - Bounds-safe reads/writes
 - Deterministic serialization
 - Safe deserialization with bounds checks
+- Browser voxel mode
+- Block palette with seven built-in blocks
+- Paint/place and erase tools
+- Fill-box and flood-fill tools
+- Region selection helper
+- Copy/paste and duplicate tools
+- Existing global undo/redo integration for voxel edits
 - Node.js test runner via `npm test`
 
 ## Verification
 
-4 voxel core tests pass locally:
+Voxel core and operation tests pass in isolated local verification, covering:
 
 - block storage + metadata
 - sparse default removal
 - deterministic serialization round-trip
 - malformed/out-of-bounds rejection
+- paint operations
+- inclusive box fill
+- connected-region flood fill
+- copy/paste with block properties
 
 ## Still missing for MF-003
 
-- browser voxel mode
-- block palette
-- placement/deletion/painting UI
-- area fill/flood fill commands
-- selection/copy/paste/duplicate
 - mirror/rotate/symmetry tools
 - layer visibility
-- grid snapping
-- unified undo/redo integration
-- voxel mesh/preview rendering
+- voxel grid snapping controls
+- persistent voxel serialization inside RKP v2 asset payloads
+- optimized chunked voxel mesh generation/greedy meshing
+- material/texture registry integration
+- model-to-voxel conversion
+- advanced selection UX and transform handles
