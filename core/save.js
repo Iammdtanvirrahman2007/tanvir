@@ -1,4 +1,6 @@
 import * as THREE from "three";
+import { createRKPAsset } from "./rkpSchema.js";
+import { validateRKP } from "./rkpValidator.js";
 
 const FORMATS = {
     rkp: { label: "ModelForge Project", ext: "rkp", mime: "application/json" },
@@ -12,9 +14,23 @@ const PROJECT_NAME_KEY = "modelforge:project-name";
 const SAVE_DIALOG_ID = "modelForgeSaveDialog";
 const SAVE_STYLE_ID = "modelForgeSaveDialogStyles";
 
-export function serializeScene(scene) {
+export function serializeScene(scene, options = {}) {
     const roots = scene.children.filter(object => object.userData?.editorObject && !object.userData?.editorOnly);
-    return { format: "ModelForgeProject", fileExtension: ".rkp", version: 5, app: "ModelForge", projectName: getProjectName(), created: new Date().toISOString(), objects: roots.map(serializeObject) };
+    const objects = roots.map(serializeObject);
+    return createRKPAsset({
+        id: options.assetId || getProjectAssetId(),
+        name: options.name || getProjectName(),
+        type: options.assetType || "model",
+        category: options.category || "model",
+        tags: options.tags || [],
+        author: options.author || "",
+        creator: options.creator || "",
+        objects,
+        scene: { objects },
+        materials: collectMaterials(objects),
+        dimensions: calculateDimensions(scene),
+        description: options.description || ""
+    });
 }
 
 export function saveScene(scene, options = {}) {
@@ -23,6 +39,13 @@ export function saveScene(scene, options = {}) {
     if (format === "obj") return exportOBJ(scene, options.filename);
     if (format === "gltf" || format === "glb") return exportGLTF(scene, format, options.filename);
     const data = serializeScene(scene);
+    if (format === "rkp") {
+        const validation = validateRKP(data);
+        if (!validation.valid) {
+            window.dispatchEvent(new CustomEvent("editor:validation-failed", { detail: validation }));
+            return false;
+        }
+    }
     const ext = FORMATS[format].ext;
     return downloadBlob(JSON.stringify(data, null, 2), options.filename || `${sanitizeName(getProjectName())}.${ext}`, FORMATS[format].mime);
 }
@@ -67,6 +90,9 @@ export function saveRKP(scene, filename) { const name = sanitizeName(filename ||
 export function getProjectName() { try { return localStorage.getItem(PROJECT_NAME_KEY) || "modelforge-project"; } catch { return "modelforge-project"; } }
 export function setProjectName(name) { const clean = sanitizeName(name) || "modelforge-project"; try { localStorage.setItem(PROJECT_NAME_KEY, clean); } catch {} window.dispatchEvent(new CustomEvent("editor:project-name-change", { detail: clean })); return clean; }
 export function getSupportedSaveFormats() { return Object.values(FORMATS).map(item => ({ ...item })); }
+function getProjectAssetId() { const key = "modelforge:asset-id"; try { let id = localStorage.getItem(key); if (!id) { id = crypto.randomUUID(); localStorage.setItem(key, id); } return id; } catch { return `asset-${Date.now()}`; } }
+function calculateDimensions(scene) { const box = new THREE.Box3().setFromObject(scene); if (box.isEmpty()) return { x: 0, y: 0, z: 0 }; const size = box.getSize(new THREE.Vector3()); return { x: Number(size.x.toFixed(4)), y: Number(size.y.toFixed(4)), z: Number(size.z.toFixed(4)) }; }
+function collectMaterials(objects) { const map = new Map(); const visit = list => list.forEach(object => { (object.materials || []).forEach(material => { const key = material.name || JSON.stringify(material); if (!map.has(key)) map.set(key, material); }); visit(object.children || []); }); visit(objects); return [...map.values()]; }
 function sanitizeName(value) { return String(value || "").trim().replace(/\.[^.]+$/, "").replace(/[\\/:*?"<>|]/g, "-").replace(/\s+/g, " ").slice(0, 120).trim(); }
 function escapeHtml(value) { return String(value).replace(/[&<>'"]/g, char => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" }[char])); }
 function downloadBlob(content, filename, mime) { const blob = new Blob([content], { type: mime }); const url = URL.createObjectURL(blob); const link = document.createElement("a"); link.href = url; link.download = filename; document.body.appendChild(link); link.click(); link.remove(); setTimeout(() => URL.revokeObjectURL(url), 1000); return true; }
@@ -83,7 +109,7 @@ async function exportGLTF(scene, format, filename) {
 
 function serializeObject(object) {
     const materials = object.material ? (Array.isArray(object.material) ? object.material : [object.material]).map(serializeMaterial) : [];
-    return { kind: object.isGroup ? "Group" : "Mesh", type: object.geometry?.type || object.type, name: object.name || object.type, visible: object.visible, position: object.position.toArray(), rotation: [object.rotation.x, object.rotation.y, object.rotation.z], scale: object.scale.toArray(), materials, userData: { partType: object.userData?.partType || "", category: object.userData?.category || "", manufacturer: object.userData?.manufacturer || "", mass: object.userData?.mass ?? 1, description: object.userData?.description || "", version: object.userData?.version || "1.0", materialName: object.userData?.materialName || "" }, children: object.children.filter(child => child.userData?.editorObject && !child.userData?.editorOnly).map(serializeObject) };
+    return { id: object.uuid, kind: object.isGroup ? "Group" : "Mesh", type: object.geometry?.type || object.type, name: object.name || object.type, visible: object.visible, position: object.position.toArray(), rotation: [object.rotation.x, object.rotation.y, object.rotation.z], scale: object.scale.toArray(), materials, userData: { partType: object.userData?.partType || "", category: object.userData?.category || "", manufacturer: object.userData?.manufacturer || "", mass: object.userData?.mass ?? 1, description: object.userData?.description || "", version: object.userData?.version || "1.0", materialName: object.userData?.materialName || "" }, children: object.children.filter(child => child.userData?.editorObject && !child.userData?.editorOnly).map(serializeObject) };
 }
 
 function serializeMaterial(material) {
