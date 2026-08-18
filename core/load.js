@@ -1,6 +1,8 @@
 import * as THREE from "three";
 import { addObject, clearObjects } from "./objectManager.js";
 import { rebuildHierarchy } from "../ui/hierarchy.js";
+import { migrateToRKPv2 } from "./rkpMigration.js";
+import { validateRKP } from "./rkpValidator.js";
 
 const ACCEPT = ".rkp,.json,.obj,.gltf,.glb,.stl,.fbx,.dae,.3ds,.ply,.csv,.txt,application/json,model/gltf+json,model/gltf-binary,text/plain";
 
@@ -23,13 +25,25 @@ export async function openProjectFile(scene, file) {
         if (ext === "3ds") return await openLoader(scene, file, "TDSLoader");
         if (ext === "ply") return await openLoader(scene, file, "PLYLoader");
         throw new Error(`Unsupported file type: .${ext}`);
-    } catch (error) { console.error("Import failed:", error); window.dispatchEvent(new CustomEvent("editor:status", { detail: `Import failed: ${file.name}` })); return false; }
+    } catch (error) { console.error("Import failed:", error); window.dispatchEvent(new CustomEvent("editor:status", { detail: `Import failed: ${error.message || file.name}` })); return false; }
 }
 
 async function openJSONProject(scene, file) {
-    const text = await file.text(); const parsed = JSON.parse(text); const roots = Array.isArray(parsed) ? parsed : parsed.objects;
-    if (!Array.isArray(roots)) throw new Error("Invalid ModelForge project.");
-    clearObjects(scene); roots.forEach(data => restoreObject(scene, scene, data)); rebuildHierarchy(); announce(file, parsed.format || "JSON", roots.length); return true;
+    const text = await file.text();
+    const parsed = JSON.parse(text);
+    const asset = migrateToRKPv2(parsed);
+    const validation = validateRKP(asset);
+    if (!validation.valid) {
+        const error = new Error(validation.errors.slice(0, 5).map(issue => `${issue.code}: ${issue.message}`).join("; "));
+        error.validation = validation;
+        throw error;
+    }
+    const roots = Array.isArray(asset.objects) ? asset.objects : [];
+    clearObjects(scene);
+    roots.forEach(data => restoreObject(scene, scene, data));
+    rebuildHierarchy();
+    announce(file, "RKP", roots.length, { assetId: asset.metadata.id, assetType: asset.metadata.assetType, version: asset.version, validation });
+    return true;
 }
 
 async function openGLTF(scene, file) {
@@ -49,7 +63,7 @@ function addImportedRoot(scene, root, file, format) {
     scene.add(root); rebuildHierarchy(); announce(file, format, root.children?.length || 1); return true;
 }
 
-function announce(file, format, objectCount) { window.dispatchEvent(new CustomEvent("editor:project-opened", { detail: { fileName: file.name, format, objectCount } })); window.dispatchEvent(new CustomEvent("editor:status", { detail: `Imported ${file.name}` })); }
+function announce(file, format, objectCount, extra = {}) { window.dispatchEvent(new CustomEvent("editor:project-opened", { detail: { fileName: file.name, format, objectCount, ...extra } })); window.dispatchEvent(new CustomEvent("editor:status", { detail: `Imported ${file.name}` })); }
 
 function restoreObject(scene, parent, data) {
     if (!data) return null;
@@ -97,5 +111,5 @@ function createMaterial(data) {
     return material;
 }
 
-function createGeometry(type) { switch (type) { case "BoxGeometry": return new THREE.BoxGeometry(1,1,1); case "SphereGeometry": return new THREE.SphereGeometry(.5,32,20); case "CylinderGeometry": return new THREE.CylinderGeometry(.5,.5,2,32); case "ConeGeometry": return new THREE.ConeGeometry(.5,1.5,32); case "PlaneGeometry": return new THREE.PlaneGeometry(5,5); case "OctahedronGeometry": return new THREE.OctahedronGeometry(.5); case "TorusGeometry": return new THREE.TorusGeometry(.5,.2,16,64); default: return null; } }
+function createGeometry(type) { switch (type) { case "BoxGeometry": return new THREE.BoxGeometry(1,1,1); case "SphereGeometry": return new THREE.SphereGeometry(.5,32,20); case "CylinderGeometry": return new THREE.CylinderGeometry(.5,.5,2,32); case "ConeGeometry": return new THREE.ConeGeometry(.5,.5,2,32); case "PlaneGeometry": return new THREE.PlaneGeometry(5,5); case "OctahedronGeometry": return new THREE.OctahedronGeometry(.5); case "TorusGeometry": return new THREE.TorusGeometry(.5,.2,16,64); default: return null; } }
 function normalizeVector(value, fallback) { if (Array.isArray(value) && value.length >= 3) return [Number(value[0])||0,Number(value[1])||0,Number(value[2])||0]; if (value && typeof value === "object") return [Number(value.x)||0,Number(value.y)||0,Number(value.z)||0]; return fallback; }
