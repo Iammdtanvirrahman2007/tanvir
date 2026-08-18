@@ -22,11 +22,14 @@ MF-023 Automated Testing: 🟡 PARTIAL
 - Region selection helper
 - Copy/paste and duplicate tools
 - Existing global undo/redo integration for voxel edits
+- RKP v2 voxel payload persistence on save
+- RKP migration retains the loaded asset for restoration
+- Browser bridge restores saved voxel data into the voxel workspace after project open
 - Node.js test runner via `npm test`
 
 ## Verification
 
-Voxel core and operation tests pass in isolated local verification, covering:
+Voxel core and operation tests cover:
 
 - block storage + metadata
 - sparse default removal
@@ -36,13 +39,13 @@ Voxel core and operation tests pass in isolated local verification, covering:
 - inclusive box fill
 - connected-region flood fill
 - copy/paste with block properties
+- RKP v2 voxel payload presence/absence contract
 
 ## Still missing for MF-003
 
 - mirror/rotate/symmetry tools
 - layer visibility
 - voxel grid snapping controls
-- persistent voxel serialization inside RKP v2 asset payloads
 - optimized chunked voxel mesh generation/greedy meshing
 - material/texture registry integration
 - model-to-voxel conversion
