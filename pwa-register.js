@@ -34,6 +34,21 @@
       })
       .catch(error => console.warn('ModelForge node vector renderer load failed:', error));
 
+    import('./core/voxel/editor.js?v=20260818-voxel-ui-1')
+      .then(async ({ initVoxelEditor }) => {
+        const { scene, renderer, camera, controls } = await import('./core/scene.js?v=20260811-runtime-fix');
+        const start = () => {
+          if (window.__modelForgeVoxelEditor) return;
+          try {
+            window.__modelForgeVoxelEditor = initVoxelEditor({ scene, renderer, camera, controls });
+          } catch (error) {
+            console.warn('ModelForge voxel editor failed:', error);
+          }
+        };
+        requestAnimationFrame(() => requestAnimationFrame(start));
+      })
+      .catch(error => console.warn('ModelForge voxel editor load failed:', error));
+
     Promise.all([
       import('./core/aiAssistant.js?v=20260817-ai-1'),
       import('./core/selection.js'),
