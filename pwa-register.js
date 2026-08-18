@@ -45,6 +45,16 @@
       })
       .catch(error => console.warn('ModelForge voxel editor load failed:', error));
 
+    import('./core/voxel/previewController.js?v=20260818-voxel-opt-1')
+      .then(module => {
+        try {
+          window.__modelForgeVoxelPreview = module.initVoxelPreviewController();
+        } catch (error) {
+          console.warn('ModelForge voxel preview controller failed:', error);
+        }
+      })
+      .catch(error => console.warn('ModelForge voxel preview controller load failed:', error));
+
     Promise.all([
       import('./core/aiAssistant.js?v=20260817-ai-1'),
       import('./core/selection.js'),
