@@ -29,11 +29,14 @@ MF-023 Automated Testing: 🟡 PARTIAL
 - Rotate Y 90° transform
 - X-axis symmetry transform
 - Layer listing and layer visibility controls
+- Canonical voxel coordinate snapping utilities
+- Instanced voxel preview backend grouped by block type
+- Explicit optimized-preview controller with standard-preview fallback
 - Node.js test runner via `npm test`
 
 ## Verification
 
-Voxel core and operation tests cover:
+Voxel core, operation, and snapping tests cover:
 
 - block storage + metadata
 - sparse default removal
@@ -48,11 +51,13 @@ Voxel core and operation tests cover:
 - rotate Y transform
 - symmetry transform
 - Y-layer grouping
+- coordinate snapping and grid clamping
+- invalid snap-step rejection
 
 ## Still missing for MF-003
 
-- voxel grid snapping controls
-- optimized chunked voxel mesh generation/greedy meshing
+- full voxel placement snapping integration for all editor tools
+- optimized chunked/greedy meshing beyond instancing
 - material/texture registry integration
 - model-to-voxel conversion
 - advanced selection UX and transform handles
