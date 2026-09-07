@@ -5,13 +5,16 @@ import { refreshInspector } from "../ui/inspector.js";
 
 let transform = null;
 let snapEnabled = false;
+let surfaceSnapEnabled = true;
 let snapValues = { translation: 1, rotation: 15, scale: 0.1 };
 let startState = null;
 let pivotState = null;
 let spaceMode = "world";
 let transformEnabled = true;
+let editorScene = null;
 
 export function setupTransform(camera, renderer, scene, orbitControls) {
+    editorScene = scene;
     transform = new TransformControls(camera, renderer.domElement);
     transform.setMode("translate");
     transform.setSize(0.85);
@@ -41,6 +44,10 @@ export function setupTransform(camera, renderer, scene, orbitControls) {
             object.updateMatrixWorld(true);
             startState = captureWorld(object);
             return;
+        }
+
+        if (transform.mode === "translate" && surfaceSnapEnabled && object.userData?.selectable !== false) {
+            snapObjectToNearbySurface(object);
         }
 
         object.updateMatrixWorld(true);
@@ -213,6 +220,14 @@ export function setSnapEnabled(enabled) {
 export function toggleSnap() { return setSnapEnabled(!snapEnabled); }
 export function isSnapEnabled() { return snapEnabled; }
 
+export function setSurfaceSnapEnabled(enabled) {
+    surfaceSnapEnabled = !!enabled;
+    window.dispatchEvent(new CustomEvent("editor:surface-snap-change", { detail: surfaceSnapEnabled }));
+    return surfaceSnapEnabled;
+}
+export function toggleSurfaceSnap() { return setSurfaceSnapEnabled(!surfaceSnapEnabled); }
+export function isSurfaceSnapEnabled() { return surfaceSnapEnabled; }
+
 export function setSnapValues(values = {}) {
     if (Number.isFinite(values.translation) && values.translation > 0) snapValues.translation = values.translation;
     if (Number.isFinite(values.rotation) && values.rotation > 0) snapValues.rotation = values.rotation;
@@ -236,6 +251,55 @@ function applySnapSettings() {
     transform.setTranslationSnap(snapEnabled ? snapValues.translation : null);
     transform.setRotationSnap(snapEnabled ? THREE.MathUtils.degToRad(snapValues.rotation) : null);
     transform.setScaleSnap(snapEnabled ? snapValues.scale : null);
+}
+
+function snapObjectToNearbySurface(object) {
+    if (!editorScene || !object || object.parent?.userData?.editorOnly) return false;
+    object.updateMatrixWorld(true);
+    const movingBox = new THREE.Box3().setFromObject(object);
+    if (movingBox.isEmpty()) return false;
+
+    const candidates=[];
+    editorScene.traverse(other=>{
+        if (other===object || !other.visible || other.userData?.editorOnly || other.userData?.selectable===false) return;
+        if (!other.isMesh && !other.isGroup) return;
+        other.updateMatrixWorld(true);
+        const box=new THREE.Box3().setFromObject(other);
+        if (box.isEmpty()) return;
+        candidates.push({object:other,box});
+    });
+    if (!candidates.length) return false;
+
+    const center=movingBox.getCenter(new THREE.Vector3());
+    let best=null;
+    for(const item of candidates){
+        const b=item.box;
+        const overlapX=Math.min(movingBox.max.x,b.max.x)-Math.max(movingBox.min.x,b.min.x);
+        const overlapZ=Math.min(movingBox.max.z,b.max.z)-Math.max(movingBox.min.z,b.min.z);
+        const overlapY=Math.min(movingBox.max.y,b.max.y)-Math.max(movingBox.min.y,b.min.y);
+        const sizeX=Math.max(movingBox.max.x-movingBox.min.x,b.max.x-b.min.x);
+        const sizeZ=Math.max(movingBox.max.z-movingBox.min.z,b.max.z-b.min.z);
+        const xRatio=overlapX/Math.max(sizeX,1e-6),zRatio=overlapZ/Math.max(sizeZ,1e-6);
+        const horizontalGood=xRatio>.35&&zRatio>.35;
+        if(!horizontalGood) continue;
+
+        const gapTop=Math.abs(movingBox.min.y-b.max.y);
+        const gapBottom=Math.abs(movingBox.max.y-b.min.y);
+        const gap=Math.min(gapTop,gapBottom);
+        const tolerance=Math.max(.18,Math.min(sizeX,sizeZ)*.22);
+        if(gap>tolerance) continue;
+
+        const targetTop=gapTop<=gapBottom;
+        const desiredY=targetTop?b.max.y-(movingBox.min.y-center.y):b.min.y-(movingBox.max.y-center.y);
+        const verticalGap=gap;
+        const score=verticalGap-(xRatio+zRatio)*.05;
+        if(!best||score<best.score)best={score,desiredY,centerY:center.y,targetTop};
+    }
+    if(!best) return false;
+    object.position.y += best.desiredY-center.y;
+    object.updateMatrixWorld(true);
+    window.dispatchEvent(new CustomEvent("editor:surface-snapped",{detail:{object,mode:best.targetTop?"top":"bottom"}}));
+    return true;
 }
 
 function captureWorld(object) {
