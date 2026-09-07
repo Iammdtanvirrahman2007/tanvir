@@ -10,7 +10,7 @@ function start() {
         return;
     }
     started = true;
-    import("./builderTools.js?v=20260908-builder-1")
+    import("./builderTools.js?v=20260908-builder-2")
         .then(({ initBuilderTools }) => initBuilderTools({ scene, renderer, camera, controls }))
         .catch(error => {
             console.error("ModelForge 3D Builder boot failed", error);
