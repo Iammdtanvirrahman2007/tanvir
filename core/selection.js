@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import "./meshEditAutoBoot.js";
+import "./builderAutoBoot.js";
 import { attachTransform, detachTransform, isDraggingTransform, getTransform } from "./transform.js?v=20260812-transform-axis-fix-4";
 import { updateInspector } from "../ui/inspector.js";
 import { highlight, highlightMultiple, clearHighlight } from "./highlight.js";
