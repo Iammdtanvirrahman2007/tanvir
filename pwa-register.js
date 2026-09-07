@@ -31,9 +31,14 @@
 
     import('./core/voxel/editor.js?v=20260818-voxel-ui-2')
       .then(async ({ initVoxelEditor }) => {
-        const { scene, renderer, camera, controls } = await import('./core/scene.js?v=20260811-runtime-fix');
+        const sceneModule = await import('./core/scene.js?v=20260811-runtime-fix');
         const start = () => {
           if (window.__modelForgeVoxelEditor) return;
+          const { scene, renderer, camera, controls } = sceneModule;
+          if (!scene || !renderer || !camera) {
+            requestAnimationFrame(start);
+            return;
+          }
           try { window.__modelForgeVoxelEditor = initVoxelEditor({ scene, renderer, camera, controls }); }
           catch (error) { console.warn('ModelForge voxel editor failed:', error); }
         };
@@ -60,7 +65,10 @@
       .then(async module => {
         try {
           const { scene } = await import('./core/scene.js?v=20260811-runtime-fix');
-          module.initProductionAssetUI(scene);
+          if (scene) module.initProductionAssetUI(scene);
+          else requestAnimationFrame(() => {
+            import('./core/scene.js?v=20260811-runtime-fix').then(({ scene }) => scene && module.initProductionAssetUI(scene)).catch(() => {});
+          });
         } catch (error) { console.warn('ModelForge production asset UI failed:', error); }
       })
       .catch(error => console.warn('ModelForge production asset UI load failed:', error));
