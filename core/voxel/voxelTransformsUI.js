@@ -17,7 +17,7 @@ export function initVoxelTransformUI() {
   if (window.__modelForgeVoxelTransformsUI) return window.__modelForgeVoxelTransformsUI;
   const start = () => {
     const editor = window.__modelForgeVoxelEditor;
-    if (!editor?.getGrid) return;
+    if (!editor?.getGrid || !scene) return;
     const root = scene.getObjectByName("VoxelWorkspace");
     if (!root) return;
     const api = { destroy: () => panel.remove(), refresh: render };
@@ -32,7 +32,7 @@ export function initVoxelTransformUI() {
     let attempts = 0;
     const retry = () => {
       api = start();
-      if (!api && attempts++ < 60) requestAnimationFrame(retry);
+      if (!api && attempts++ < 180) requestAnimationFrame(retry);
     };
     requestAnimationFrame(retry);
   }
@@ -50,37 +50,22 @@ function buildPanel(editor, root) {
   `;
   const style = document.createElement("style");
   style.id = "voxelTransformStyles";
-  style.textContent = `
-    #voxelTransformPanel{position:fixed;right:18px;top:78px;width:230px;z-index:130;background:#111319;border:1px solid #343842;border-radius:9px;box-shadow:0 18px 60px #0009;color:#e6e9ee;font-family:system-ui,sans-serif;overflow:hidden}
-    .vtx-head{display:flex;justify-content:space-between;align-items:center;padding:11px 12px;border-bottom:1px solid #292d35;background:#17191f}.vtx-head span{display:block;font-size:8px;letter-spacing:.15em;color:#7f8692}.vtx-head strong{display:block;font-size:13px;margin-top:2px}.vtx-head button{width:26px;height:26px;border:1px solid #333741;background:#1e2127;color:#c9cdd5;border-radius:5px;cursor:pointer}
-    .vtx-section{padding:10px 10px;border-bottom:1px solid #252831}.vtx-label{font-size:8px;letter-spacing:.13em;color:#7f8692;margin-bottom:7px}.vtx-grid{display:grid;grid-template-columns:1fr 1fr;gap:5px}.vtx-grid button,.vtx-layer-row button,.vtx-layer-row select{min-height:30px;border:1px solid #30343c;border-radius:5px;background:#191c22;color:#b8bdc7;font:500 10px system-ui;cursor:pointer}.vtx-grid button:hover,.vtx-layer-row button:hover{background:#252932;color:#fff}.vtx-layer-row{display:grid;grid-template-columns:1fr auto auto;gap:5px}.vtx-help{padding-top:7px;color:#777e8a;font-size:9px;line-height:1.35}
-    @media(max-width:760px){#voxelTransformPanel{left:8px;right:8px;top:auto;bottom:8px;width:auto}.vtx-grid{grid-template-columns:repeat(4,1fr)}.vtx-section{padding:8px}}
-  `;
+  style.textContent = `#voxelTransformPanel{position:fixed;right:18px;top:78px;width:230px;z-index:130;background:#111319;border:1px solid #343842;border-radius:9px;box-shadow:0 18px 60px #0009;color:#e6e9ee;font-family:system-ui,sans-serif;overflow:hidden}.vtx-head{display:flex;justify-content:space-between;align-items:center;padding:11px 12px;border-bottom:1px solid #292d35;background:#17191f}.vtx-head span{display:block;font-size:8px;letter-spacing:.15em;color:#7f8692}.vtx-head strong{display:block;font-size:13px;margin-top:2px}.vtx-head button{width:26px;height:26px;border:1px solid #333741;background:#1e2127;color:#c9cdd5;border-radius:5px;cursor:pointer}.vtx-section{padding:10px;border-bottom:1px solid #252831}.vtx-label{font-size:8px;letter-spacing:.13em;color:#7f8692;margin-bottom:7px}.vtx-grid{display:grid;grid-template-columns:1fr 1fr;gap:5px}.vtx-grid button,.vtx-layer-row button,.vtx-layer-row select{min-height:30px;border:1px solid #30343c;border-radius:5px;background:#191c22;color:#b8bdc7;font:500 10px system-ui;cursor:pointer}.vtx-grid button:hover,.vtx-layer-row button:hover{background:#252932;color:#fff}.vtx-layer-row{display:grid;grid-template-columns:1fr auto auto;gap:5px}.vtx-help{padding-top:7px;color:#777e8a;font-size:9px;line-height:1.35}@media(max-width:760px){#voxelTransformPanel{left:8px;right:8px;top:auto;bottom:8px;width:auto}.vtx-grid{grid-template-columns:repeat(4,1fr)}}`;
   document.head.appendChild(style);
-
   panel.querySelector("[data-close]").addEventListener("click", () => { panel.remove(); window.__modelForgeVoxelTransformsUI = null; });
   panel.querySelectorAll("[data-action]").forEach(button => button.addEventListener("click", () => {
     const grid = editor.getGrid();
     const before = snapshot(grid);
     try {
-      if (button.dataset.action === "mirror-x") mirror(grid, "x");
-      if (button.dataset.action === "mirror-y") mirror(grid, "y");
-      if (button.dataset.action === "mirror-z") mirror(grid, "z");
-      if (button.dataset.action === "rotate-y") rotateY90(grid, 1);
-      if (button.dataset.action === "symmetry") symmetricSet(grid, "x");
+      applyAction(grid, button.dataset.action);
       render();
-      pushHistory({
-        label: `Voxel ${button.textContent.trim()}`,
-        undo: () => { restoreSnapshot(grid, before); render(); },
-        redo: () => { applyAction(grid, button.dataset.action); render(); }
-      });
+      pushHistory({ label: `Voxel ${button.textContent.trim()}`, undo: () => { restoreSnapshot(grid, before); render(); }, redo: () => { applyAction(grid, button.dataset.action); render(); } });
       window.dispatchEvent(new CustomEvent("editor:status", { detail: `${button.textContent.trim()} applied` }));
     } catch (error) {
       restoreSnapshot(grid, before);
       window.dispatchEvent(new CustomEvent("editor:status", { detail: `Voxel transform failed: ${error.message}` }));
     }
   }));
-
   panel.querySelector("[data-layer-action=show]").addEventListener("click", () => setLayer(true));
   panel.querySelector("[data-layer-action=hide]").addEventListener("click", () => setLayer(false));
 
@@ -92,9 +77,6 @@ function buildPanel(editor, root) {
     }
     window.dispatchEvent(new CustomEvent("editor:status", { detail: `Layer ${index}: ${visible ? "visible" : "hidden"}` }));
   }
-
-  return panel;
-
   function applyAction(grid, action) {
     if (action === "mirror-x") mirror(grid, "x");
     else if (action === "mirror-y") mirror(grid, "y");
@@ -102,13 +84,9 @@ function buildPanel(editor, root) {
     else if (action === "rotate-y") rotateY90(grid, 1);
     else if (action === "symmetry") symmetricSet(grid, "x");
   }
-
   function render() {
     const grid = editor.getGrid();
-    for (const child of [...root.children]) {
-      child.removeFromParent();
-      child.geometry?.dispose?.();
-    }
+    for (const child of [...root.children]) { child.removeFromParent(); child.geometry?.dispose?.(); }
     const materialCache = new Map();
     grid.forEachBlock(block => {
       const geometry = new THREE.BoxGeometry(0.98, 0.98, 0.98);
