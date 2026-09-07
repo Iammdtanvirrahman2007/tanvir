@@ -12,6 +12,7 @@ export function initVoxelPreviewController() {
 
   const ensure = () => {
     if (!preview) preview = new GreedyVoxelRenderer(scene, { chunkSize: 16, registry });
+    else if (scene) preview.attachScene(scene);
     return preview;
   };
 
@@ -22,6 +23,8 @@ export function initVoxelPreviewController() {
     const editor = getEditor();
     const grid = editor?.getGrid?.();
     if (!grid || !preview) return;
+    if (scene) preview.attachScene(scene);
+    if (!preview.scene) return;
     const payload = grid.serialize();
     const signature = JSON.stringify(payload.blocks);
     if (signature === lastSignature) return;
@@ -31,6 +34,7 @@ export function initVoxelPreviewController() {
   };
 
   const togglePreview = () => {
+    if (!scene) return setStatus("Voxel preview waiting for 3D scene");
     const renderer = ensure();
     const editor = getEditor();
     const optimizedVisible = !renderer.root.visible;
@@ -61,11 +65,7 @@ export function initVoxelPreviewController() {
     if (!panel) return false;
     const tools = document.createElement("div");
     tools.id = "voxelPerformanceTools";
-    tools.innerHTML = `
-      <div class="mf-voxel-perf-title">VIEW / GRID</div>
-      <button type="button" id="voxelOptimizedBtn">Greedy Preview</button>
-      <label>Snap <select id="voxelSnapStep"><option value="1">1 block</option><option value="2">2 blocks</option></select></label>
-    `;
+    tools.innerHTML = `<div class="mf-voxel-perf-title">VIEW / GRID</div><button type="button" id="voxelOptimizedBtn">Greedy Preview</button><label>Snap <select id="voxelSnapStep"><option value="1">1 block</option><option value="2">2 blocks</option></select></label>`;
     panel.appendChild(tools);
     tools.querySelector("#voxelOptimizedBtn").addEventListener("click", togglePreview);
     tools.querySelector("#voxelSnapStep").addEventListener("change", event => updateSnap(event.target.value));
@@ -77,10 +77,11 @@ export function initVoxelPreviewController() {
   };
 
   const boot = () => {
-    if (!injectControls()) return false;
+    if (!injectControls() || !scene) return false;
     ensure();
     if (!timer) timer = window.setInterval(refresh, 700);
     window.addEventListener("editor:voxel-mode", () => {
+      if (!scene) return;
       const editor = getEditor();
       const original = scene.getObjectByName("VoxelWorkspace");
       if (original && preview?.root?.visible !== true) original.visible = !!editor?.isActive?.();
