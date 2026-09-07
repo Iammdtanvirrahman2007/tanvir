@@ -4,15 +4,22 @@ import { createDefaultBlockRegistry } from "./blockRegistry.js";
 
 export class GreedyVoxelRenderer {
   constructor(scene, options = {}) {
-    this.scene = scene;
+    this.scene = scene || null;
     this.chunkSize = Math.max(4, Math.floor(options.chunkSize || 16));
     this.registry = options.registry || createDefaultBlockRegistry();
     this.root = new THREE.Group();
     this.root.name = "GreedyVoxelPreview";
     this.root.visible = false;
-    scene.add(this.root);
+    if (this.scene) this.scene.add(this.root);
     this.materials = new Map();
     this.stats = { chunks: 0, blocks: 0, quads: 0, meshes: 0 };
+  }
+
+  attachScene(scene) {
+    if (!scene) return false;
+    this.scene = scene;
+    if (this.root.parent !== scene) scene.add(this.root);
+    return true;
   }
 
   rebuild(grid) {
@@ -22,8 +29,7 @@ export class GreedyVoxelRenderer {
     for (let y = 0; y < grid.height; y += this.chunkSize) {
       for (let z = 0; z < grid.depth; z += this.chunkSize) {
         for (let x = 0; x < grid.width; x += this.chunkSize) {
-          const origin = [x, y, z];
-          const data = buildGreedyChunk(grid, origin, this.chunkSize, this.registry);
+          const data = buildGreedyChunk(grid, [x, y, z], this.chunkSize, this.registry);
           const chunkQuads = countChunkQuads(data);
           if (!chunkQuads) continue;
           chunks++;
@@ -54,14 +60,7 @@ export class GreedyVoxelRenderer {
   materialFor(blockId) {
     if (this.materials.has(blockId)) return this.materials.get(blockId);
     const def = this.registry.require(blockId);
-    const material = new THREE.MeshStandardMaterial({
-      color: def.color,
-      roughness: def.roughness,
-      metalness: def.metalness,
-      transparent: def.transparent,
-      opacity: def.transparent ? 0.55 : 1,
-      depthWrite: !def.transparent
-    });
+    const material = new THREE.MeshStandardMaterial({ color: def.color, roughness: def.roughness, metalness: def.metalness, transparent: def.transparent, opacity: def.transparent ? 0.55 : 1, depthWrite: !def.transparent });
     this.materials.set(blockId, material);
     return material;
   }
