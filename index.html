@@ -114,7 +114,7 @@
 </footer>
 
 <input id="fileInput" type="file" accept=".glb,.gltf,.json" hidden>
-<script type="module" src="main.js?v=20260908-ui-reset-1"></script>
+<script type="module" src="main.js?v=20260911-studio-1"></script>
 <script type="module">
 import{initDeviceExperience}from"./core/deviceExperience.js?v=20260908-ui-reset-1";
 import{initCommandCenter,openCommandCenter}from"./core/commandCenter.js?v=20260908-ui-reset-1";
@@ -123,10 +123,11 @@ import{initProjectPersistence}from"./core/projectPersistence.js?v=20260908-ui-re
 import{initModelingUI}from"./core/modelingUI.js?v=20260908-ui-reset-1";
 import{initRecoveryUI}from"./core/recoveryUI.js?v=20260908-ui-reset-1";
 import{initRocketNodeUiFix}from"./ui/rocketNodeUiFix.js";
+import{initStudioUpgrade}from"./core/studioUpgrade.js?v=20260911-studio-1";
 import{scene}from"./core/scene.js?v=20260811-runtime-fix";
-const start=()=>{initDeviceExperience();initCommandCenter();initNumericTransform();initProjectPersistence(scene);initModelingUI();initRecoveryUI();initRocketNodeUiFix();[["fileMenuBtn","file"],["editMenuBtn","edit"],["viewMenuBtn","view"],["addMenuBtn","add"],["mobileMoreBtn","more"],["inspectorOptionsBtn","more"]].forEach(([id,section])=>document.getElementById(id)?.addEventListener("click",e=>{e.stopPropagation();openCommandCenter(section,e.currentTarget)}))};
+const start=()=>{initDeviceExperience();initCommandCenter();initNumericTransform();initProjectPersistence(scene);initModelingUI();initRecoveryUI();initRocketNodeUiFix();initStudioUpgrade();[["fileMenuBtn","file"],["editMenuBtn","edit"],["viewMenuBtn","view"],["addMenuBtn","add"],["mobileMoreBtn","more"],["inspectorOptionsBtn","more"]].forEach(([id,section])=>document.getElementById(id)?.addEventListener("click",e=>{e.stopPropagation();openCommandCenter(section,e.currentTarget)}))};
 if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",start,{once:true});else start();
 </script>
-<script src="pwa-register.js?v=20260908-ui-reset-1" defer></script>
+<script src="pwa-register.js?v=20260911-studio-1" defer></script>
 </body>
 </html>
