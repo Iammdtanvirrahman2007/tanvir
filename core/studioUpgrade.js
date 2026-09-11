@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { scene, camera, renderer, grid, controls, setRenderPixelRatio } from "./scene.js";
+import { scene, camera, renderer, grid, controls, setRenderPixelRatio } from "./scene.js?v=20260811-runtime-fix";
 import { createObject } from "../objects/factory.js";
 import { addObject, getObjects } from "./objectManager.js";
 import { addToHierarchy, rebuildHierarchy } from "../ui/hierarchy.js";
