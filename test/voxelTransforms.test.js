@@ -32,3 +32,9 @@ test("layer records group voxels by Y", () => {
   assert.deepEqual(layers.map(layer => layer.index), [0, 2]);
   assert.equal(layers[1].blocks[0].blockId, "stone");
 });
+
+test("unsupported axes are rejected by transform helpers", () => {
+  const grid = new VoxelGrid({ dimensions: [4, 4, 4] });
+  assert.throws(() => mirror(grid, "w"), /axis/);
+  assert.throws(() => layerRecords(grid, "t"), /axis/);
+});

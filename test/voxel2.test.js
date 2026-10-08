@@ -50,3 +50,11 @@ test("greedy mesher merges a 2-block row and removes the internal face", () => {
   assert.equal(stone.quads, 6);
   assert.equal(stone.positions.length, 108);
 });
+
+test("greedy mesher falls back to the default registry when none is passed", () => {
+  const grid = new VoxelGrid({ dimensions: [2, 2, 2] });
+  grid.setBlock(0, 0, 0, "stone");
+  const meshes = buildGreedyChunk(grid, [0, 0, 0], 16);
+  assert.ok(meshes.has("stone"));
+  assert.ok(meshes.get("stone").quads > 0);
+});

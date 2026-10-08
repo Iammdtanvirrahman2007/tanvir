@@ -15,11 +15,12 @@ export function restoreSnapshot(grid, data) {
 }
 
 export function mirror(grid, axis = "x") {
+  const normalizedAxis = normalizeAxis(axis);
   const source = snapshot(grid).blocks;
-  const limit = axisLimit(grid, axis);
+  const limit = axisLimit(grid, normalizedAxis);
   const transformed = source.map(block => ({
     ...block,
-    ...mirrorCoordinate(block, axis, limit)
+    ...mirrorCoordinate(block, normalizedAxis, limit)
   }));
   return applyTransformed(grid, transformed);
 }
@@ -49,39 +50,42 @@ export function rotateZ90(grid, turns = 1) {
 }
 
 export function mirrorPlane(grid, axis = "x", coordinate = null) {
-  const limit = axisLimit(grid, axis);
+  const normalizedAxis = normalizeAxis(axis);
+  const limit = axisLimit(grid, normalizedAxis);
   const plane = coordinate == null ? Math.floor(limit / 2) : Math.trunc(coordinate);
   const blocks = snapshot(grid).blocks;
   const transformed = [];
   for (const block of blocks) {
-    const distance = axisValue(block, axis) - plane;
+    const distance = axisValue(block, normalizedAxis) - plane;
     const target = { ...block };
     if (distance <= 0) transformed.push(target);
     else {
       const next = plane - distance;
-      target[axis] = next;
-      if (axisValue(target, axis) >= 0 && axisValue(target, axis) < limit) transformed.push(target);
+      target[normalizedAxis] = next;
+      if (axisValue(target, normalizedAxis) >= 0 && axisValue(target, normalizedAxis) < limit) transformed.push(target);
     }
   }
   return applyTransformed(grid, transformed);
 }
 
 export function symmetricSet(grid, axis = "x", coordinate = null) {
-  const limit = axisLimit(grid, axis);
+  const normalizedAxis = normalizeAxis(axis);
+  const limit = axisLimit(grid, normalizedAxis);
   const plane = coordinate == null ? Math.floor((limit - 1) / 2) : Math.trunc(coordinate);
   const source = snapshot(grid).blocks;
   const mirrored = source.map(block => ({
     ...block,
-    [axis]: plane * 2 - axisValue(block, axis) - (axis === "x" || axis === "y" || axis === "z" ? 0 : 0)
+    [normalizedAxis]: plane * 2 - axisValue(block, normalizedAxis)
   }));
-  const valid = mirrored.filter(block => axisValue(block, axis) >= 0 && axisValue(block, axis) < limit);
+  const valid = mirrored.filter(block => axisValue(block, normalizedAxis) >= 0 && axisValue(block, normalizedAxis) < limit);
   return applyTransformed(grid, [...source, ...valid]);
 }
 
 export function layerRecords(grid, axis = "y") {
+  const normalizedAxis = normalizeAxis(axis);
   const layers = new Map();
   grid.forEachBlock(block => {
-    const value = axisValue(block, axis);
+    const value = axisValue(block, normalizedAxis);
     if (!layers.has(value)) layers.set(value, []);
     layers.get(value).push(block);
   });
@@ -104,6 +108,12 @@ function applyTransformed(grid, blocks) {
     grid.setBlock(block.x, block.y, block.z, block.blockId, block.properties || null);
   }
   return { before, after: snapshot(grid), changed: grid.getVoxelCount() };
+}
+
+function normalizeAxis(axis) {
+  const value = String(axis || "").toLowerCase();
+  if (value !== "x" && value !== "y" && value !== "z") throw new Error("Voxel transform axis must be one of x, y, or z.");
+  return value;
 }
 
 function axisLimit(grid, axis) {
