@@ -1,9 +1,15 @@
+import { createDefaultBlockRegistry } from "./blockRegistry.js";
+
 const AXES = ["x", "y", "z"];
 
-export function buildGreedyChunk(grid, chunkOrigin, chunkSize = 16, registry) {
+export function buildGreedyChunk(grid, chunkOrigin = [0, 0, 0], chunkSize = 16, registry = createDefaultBlockRegistry()) {
+  if (!grid || typeof grid.isInside !== "function") throw new Error("A VoxelGrid instance is required.");
+  const safeRegistry = registry || createDefaultBlockRegistry();
+  const origin = normalizeOrigin(chunkOrigin);
+  const size = positiveChunkSize(chunkSize);
   const output = new Map();
   for (const axis of AXES) {
-    const dims = chunkDimensions(grid, chunkOrigin, chunkSize);
+    const dims = chunkDimensions(grid, origin, size);
     const d = AXES.indexOf(axis);
     const u = (d + 1) % 3;
     const v = (d + 2) % 3;
@@ -18,18 +24,18 @@ export function buildGreedyChunk(grid, chunkOrigin, chunkSize = 16, registry) {
           localB[d] = slice;
           localA[u] = localB[u] = i;
           localA[v] = localB[v] = j;
-          const a = sample(grid, chunkOrigin, localA);
-          const b = sample(grid, chunkOrigin, localB);
-          const aSolid = visibleBlock(a, registry);
-          const bSolid = visibleBlock(b, registry);
+          const a = sample(grid, origin, localA);
+          const b = sample(grid, origin, localB);
+          const aSolid = visibleBlock(a, safeRegistry);
+          const bSolid = visibleBlock(b, safeRegistry);
           let entry = null;
-          if (aSolid && (!bSolid || shouldExpose(a, b, registry))) entry = { blockId: a.blockId, sign: 1 };
-          else if (bSolid && (!aSolid || shouldExpose(b, a, registry))) entry = { blockId: b.blockId, sign: -1 };
+          if (aSolid && (!bSolid || shouldExpose(a, b, safeRegistry))) entry = { blockId: a.blockId, sign: 1 };
+          else if (bSolid && (!aSolid || shouldExpose(b, a, safeRegistry))) entry = { blockId: b.blockId, sign: -1 };
           mask.push(entry);
         }
       }
       greedyMask(mask, dims[u], dims[v], (x, y, w, h, entry) => {
-        addQuad(output, grid, chunkOrigin, axis, u, v, slice, x, y, w, h, entry, chunkSize);
+        addQuad(output, grid, origin, axis, u, v, slice, x, y, w, h, entry, size);
       });
     }
   }
@@ -113,11 +119,22 @@ function shouldExpose(current, neighbor, registry) {
 function sameEntry(a, b) { return !!a && !!b && a.blockId === b.blockId && a.sign === b.sign; }
 function addVec(a, b) { return a.map((value, index) => value + b[index]); }
 
+function normalizeOrigin(origin) {
+  const values = Array.isArray(origin) ? origin.slice(0, 3).map(value => Math.trunc(Number(value))) : [0, 0, 0];
+  return [Number.isFinite(values[0]) ? values[0] : 0, Number.isFinite(values[1]) ? values[1] : 0, Number.isFinite(values[2]) ? values[2] : 0];
+}
+
+function positiveChunkSize(size) {
+  const value = Number(size);
+  if (!Number.isFinite(value) || value <= 0) throw new RangeError("Voxel chunk size must be a positive integer.");
+  return Math.max(1, Math.trunc(value));
+}
+
 function chunkDimensions(grid, origin, size) {
   return [
-    Math.max(0, Math.min(size, grid.width - origin[0])),
-    Math.max(0, Math.min(size, grid.height - origin[1])),
-    Math.max(0, Math.min(size, grid.depth - origin[2]))
+    Math.max(0, Math.min(grid.width, origin[0] + size) - Math.max(0, origin[0])),
+    Math.max(0, Math.min(grid.height, origin[1] + size) - Math.max(0, origin[1])),
+    Math.max(0, Math.min(grid.depth, origin[2] + size) - Math.max(0, origin[2]))
   ];
 }
 

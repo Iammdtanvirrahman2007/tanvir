@@ -25,13 +25,14 @@ export class VoxelGrid {
         assertInside(this, x, y, z);
         const id = String(blockId || this.defaultBlock);
         const key = this.key(x, y, z);
-        if (id === this.defaultBlock && !properties) {
+        const hasMetadata = properties && typeof properties === "object" && Object.keys(properties).length > 0;
+        if (id === this.defaultBlock && !hasMetadata) {
             this.blocks.delete(key);
             this.metadata.delete(key);
             return null;
         }
         this.blocks.set(key, id);
-        if (properties && typeof properties === "object") this.metadata.set(key, deepClone(properties));
+        if (hasMetadata) this.metadata.set(key, deepClone(properties));
         else this.metadata.delete(key);
         return id;
     }
